@@ -1,8 +1,0 @@
-{
-  "name": "capoy/costa-rica",
-  "description": "Capoy Costa Rica - PHP application",
-  "type": "project",
-  "require": {
-    "php": ">=8.3"
-  }
-}
