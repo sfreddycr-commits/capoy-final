@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { ArrowLeft, CalendarDays, Camera, CheckCircle2, ChevronRight, Eye, EyeOff, Headphones, Heart, Leaf, LockKeyhole, Mail, MapPin, Phone, ShieldCheck, Star, Users, Van } from 'lucide-react';
 
 const tours = [
@@ -33,7 +33,37 @@ const testimonials = [
 
 function AdminLogin() {
   const [showPassword, setShowPassword] = useState(false);
-  const [submitted, setSubmitted] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [message, setMessage] = useState('');
+
+  async function submitLogin(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setMessage('');
+    setLoading(true);
+    const form = new FormData(event.currentTarget);
+    try {
+      const response = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
+        body: JSON.stringify({
+          email: String(form.get('email') || ''),
+          password: String(form.get('password') || ''),
+          remember: form.get('remember') === 'on',
+        }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        setMessage(data.error || 'No fue posible iniciar sesión.');
+        return;
+      }
+      window.location.assign('/admin');
+    } catch {
+      setMessage('No fue posible conectar con el servidor. Intenta nuevamente.');
+    } finally {
+      setLoading(false);
+    }
+  }
 
   return <main className="login-page">
     <section className="login-visual" aria-label="Costa Rica">
@@ -57,16 +87,16 @@ function AdminLogin() {
       <div className="login-card">
         <div className="login-mobile-brand"><div className="login-brand-mark">C</div><div><strong>Capoy</strong><span>Costa Rica</span></div></div>
         <div className="login-heading"><span>BIENVENIDO DE NUEVO</span><h2>Inicia sesión</h2><p>Ingresa tus credenciales para acceder al panel administrativo.</p></div>
-        <form className="login-form" onSubmit={(e)=>{e.preventDefault();setSubmitted(true)}}>
+        <form className="login-form" onSubmit={submitLogin}>
           <label>Correo electrónico
-            <div className="login-input"><Mail size={18}/><input type="email" name="email" autoComplete="email" placeholder="nombre@capoycostarica.com" required /></div>
+            <div className="login-input"><Mail size={18}/><input type="email" name="email" autoComplete="email" placeholder="nombre@capoycostarica.com" maxLength={190} required /></div>
           </label>
           <label>Contraseña
-            <div className="login-input"><LockKeyhole size={18}/><input type={showPassword?'text':'password'} name="password" autoComplete="current-password" placeholder="Ingresa tu contraseña" required /><button type="button" className="password-toggle" onClick={()=>setShowPassword(v=>!v)} aria-label={showPassword?'Ocultar contraseña':'Mostrar contraseña'}>{showPassword?<EyeOff size={18}/>:<Eye size={18}/>}</button></div>
+            <div className="login-input"><LockKeyhole size={18}/><input type={showPassword?'text':'password'} name="password" autoComplete="current-password" placeholder="Ingresa tu contraseña" minLength={12} maxLength={200} required /><button type="button" className="password-toggle" onClick={()=>setShowPassword(v=>!v)} aria-label={showPassword?'Ocultar contraseña':'Mostrar contraseña'}>{showPassword?<EyeOff size={18}/>:<Eye size={18}/>}</button></div>
           </label>
           <div className="login-options"><label className="remember"><input type="checkbox" name="remember"/><span>Recordarme</span></label><a href="mailto:soporte@capoycostarica.com?subject=Recuperar%20acceso%20administrativo">¿Olvidaste tu contraseña?</a></div>
-          <button className="login-submit" type="submit">Entrar al panel <ChevronRight size={18}/></button>
-          {submitted && <div className="login-notice" role="status"><ShieldCheck size={18}/><span><b>Interfaz lista.</b> La autenticación segura se conectará en la fase de usuarios y roles.</span></div>}
+          <button className="login-submit" type="submit" disabled={loading}>{loading ? 'Verificando…' : <>Entrar al panel <ChevronRight size={18}/></>}</button>
+          {message && <div className="login-notice" role="alert"><ShieldCheck size={18}/><span>{message}</span></div>}
         </form>
         <div className="login-security"><ShieldCheck size={16}/><span>Acceso exclusivo para personal autorizado de Capoy Costa Rica.</span></div>
         <p className="login-help">¿Necesitas ayuda? <a href="mailto:soporte@capoycostarica.com">Contacta a soporte</a></p>
@@ -75,9 +105,39 @@ function AdminLogin() {
   </main>;
 }
 
+function AdminAccess() {
+  const [user, setUser] = useState<{displayName:string; email:string; role:string} | null>(null);
+
+  useEffect(() => {
+    fetch('/api/auth/session', { credentials: 'same-origin' })
+      .then(async (response) => {
+        if (!response.ok) throw new Error('unauthorized');
+        return response.json();
+      })
+      .then((data) => setUser(data.user))
+      .catch(() => window.location.assign('/admin/login'));
+  }, []);
+
+  async function logout() {
+    await fetch('/api/auth/logout', { method: 'POST', credentials: 'same-origin' }).catch(() => null);
+    window.location.assign('/admin/login');
+  }
+
+  return <main className="login-page">
+    <section className="login-panel" style={{width:'100%', minHeight:'100vh'}}>
+      <div className="login-card">
+        <div className="login-mobile-brand" style={{display:'flex'}}><div className="login-brand-mark">C</div><div><strong>Capoy</strong><span>Costa Rica</span></div></div>
+        <div className="login-heading"><span>ACCESO AUTORIZADO</span><h2>{user ? `Hola, ${user.displayName}` : 'Verificando sesión…'}</h2><p>{user ? `${user.email} · ${user.role}` : 'Estamos validando tu sesión segura.'}</p></div>
+        {user && <><div className="login-notice" role="status"><ShieldCheck size={18}/><span><b>Sesión protegida activa.</b> La siguiente fase construirá aquí el Dashboard administrativo completo.</span></div><button className="login-submit" type="button" onClick={logout}>Cerrar sesión</button></>}
+      </div>
+    </section>
+  </main>;
+}
+
 export function App() {
   const pathname = window.location.pathname.replace(/\/$/, '') || '/';
   if (pathname === '/admin/login' || pathname === '/login') return <AdminLogin/>;
+  if (pathname === '/admin' || pathname.startsWith('/admin/')) return <AdminAccess/>;
 
   return <div className="site-shell">
     <section className="hero" id="inicio">
