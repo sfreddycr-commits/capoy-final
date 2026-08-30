@@ -40,7 +40,7 @@ app.get('/api/health', async (_req, res) => {
 });
 
 app.use(express.static(dist, { index: false, maxAge: '1h' }));
-app.get('*', (_req, res) => res.sendFile(path.join(dist, 'index.html')));
+app.get('/{*splat}', (_req, res) => res.sendFile(path.join(dist, 'index.html')));
 
 app.listen(port, '0.0.0.0', () => {
   console.log(`Capoy listening on ${port}`);
