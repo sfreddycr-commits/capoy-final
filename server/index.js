@@ -155,24 +155,24 @@ async function audit(req, eventType, { userId = null, email = null, metadata = n
   }
 }
 
+async function findSessionByToken(token) {
+  if (!pool || !token || token.length < 40) return null;
+  const [rows] = await pool.execute(
+    `SELECT s.id AS session_id, s.user_id, s.expires_at, u.email, u.display_name, u.role, u.status
+     FROM admin_sessions s
+     JOIN admin_users u ON u.id = s.user_id
+     WHERE s.token_hash = ? AND s.expires_at > NOW() AND u.status = 'active'
+     LIMIT 1`,
+    [sha256(token)],
+  );
+  return rows[0] || null;
+}
+
 async function requireSession(req, res, next) {
   if (!pool) return res.status(503).json({ error: 'Servicio temporalmente no disponible.' });
   const token = parseCookies(req)[SESSION_COOKIE];
-  if (!token || token.length < 40) {
-    clearSessionCookie(res);
-    return res.status(401).json({ error: 'Sesión requerida.' });
-  }
   try {
-    const tokenHash = sha256(token);
-    const [rows] = await pool.execute(
-      `SELECT s.id AS session_id, s.user_id, s.expires_at, u.email, u.display_name, u.role, u.status
-       FROM admin_sessions s
-       JOIN admin_users u ON u.id = s.user_id
-       WHERE s.token_hash = ? AND s.expires_at > NOW() AND u.status = 'active'
-       LIMIT 1`,
-      [tokenHash],
-    );
-    const session = rows[0];
+    const session = await findSessionByToken(token);
     if (!session) {
       clearSessionCookie(res);
       return res.status(401).json({ error: 'Sesión requerida.' });
@@ -311,13 +311,22 @@ app.post('/api/auth/logout', sameOriginOnly, requireSession, async (req, res) =>
 
 app.use('/api/admin', requireSession);
 
-app.use((req, res, next) => {
+app.use(async (req, res, next) => {
   const protectedAdminPage = req.path === '/admin' || (req.path.startsWith('/admin/') && req.path !== '/admin/login');
   if (!protectedAdminPage) return next();
-  requireSession(req, res, (error) => {
-    if (error) return next(error);
+  if (!pool) return res.status(503).send('Servicio temporalmente no disponible.');
+  try {
+    const token = parseCookies(req)[SESSION_COOKIE];
+    const session = await findSessionByToken(token);
+    if (!session) {
+      clearSessionCookie(res);
+      return res.redirect(302, '/admin/login');
+    }
     next();
-  });
+  } catch (error) {
+    console.error('admin_page_session_check_failed', error.message);
+    res.status(503).send('Servicio temporalmente no disponible.');
+  }
 });
 
 app.use(express.static(dist, { index: false, maxAge: '1h' }));
