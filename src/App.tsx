@@ -1,4 +1,5 @@
-import { CalendarDays, Camera, ChevronRight, Headphones, Heart, Leaf, LockKeyhole, MapPin, Phone, ShieldCheck, Star, Users, Van } from 'lucide-react';
+import { useState } from 'react';
+import { ArrowLeft, CalendarDays, Camera, CheckCircle2, ChevronRight, Eye, EyeOff, Headphones, Heart, Leaf, LockKeyhole, Mail, MapPin, Phone, ShieldCheck, Star, Users, Van } from 'lucide-react';
 
 const tours = [
   { badge: 'Más popular', title: 'Aventura en La Fortuna', place: 'La Fortuna, Alajuela', copy: 'Volcán Arenal, senderos, puentes colgantes y aguas termales.', hours: '8 horas', price: '$129', image: 'https://images.unsplash.com/photo-1516690561799-46d8f74f9abf?auto=format&fit=crop&w=900&q=85' },
@@ -30,7 +31,54 @@ const testimonials = [
   ['El catamarán al atardecer fue mágico. Paisajes hermosos, excelente servicio y mucha diversión.', 'Laura y Andrés', 'Argentina'],
 ];
 
+function AdminLogin() {
+  const [showPassword, setShowPassword] = useState(false);
+  const [submitted, setSubmitted] = useState(false);
+
+  return <main className="login-page">
+    <section className="login-visual" aria-label="Costa Rica">
+      <div className="login-visual-overlay" />
+      <a className="login-back" href="/"><ArrowLeft size={17}/> Volver al sitio</a>
+      <div className="login-brand"><div className="login-brand-mark">C</div><div><strong>Capoy</strong><span>Costa Rica</span></div></div>
+      <div className="login-story">
+        <span className="login-kicker">PANEL DE OPERACIONES</span>
+        <h1>Todo tu negocio,<br/>en un solo lugar.</h1>
+        <p>Gestiona tours, reservas, clientes y contenido desde una experiencia diseñada para trabajar rápido y con claridad.</p>
+        <div className="login-benefits">
+          <div><CheckCircle2/><span><b>Operación centralizada</b>Reservas, clientes y proveedores conectados.</span></div>
+          <div><CheckCircle2/><span><b>Datos en tiempo real</b>Decisiones claras con información actualizada.</span></div>
+          <div><CheckCircle2/><span><b>Acceso protegido</b>Tu panel administrativo permanece privado.</span></div>
+        </div>
+      </div>
+      <div className="login-visual-footer"><span>Capoy Costa Rica</span><span>Administración segura</span></div>
+    </section>
+
+    <section className="login-panel">
+      <div className="login-card">
+        <div className="login-mobile-brand"><div className="login-brand-mark">C</div><div><strong>Capoy</strong><span>Costa Rica</span></div></div>
+        <div className="login-heading"><span>BIENVENIDO DE NUEVO</span><h2>Inicia sesión</h2><p>Ingresa tus credenciales para acceder al panel administrativo.</p></div>
+        <form className="login-form" onSubmit={(e)=>{e.preventDefault();setSubmitted(true)}}>
+          <label>Correo electrónico
+            <div className="login-input"><Mail size={18}/><input type="email" name="email" autoComplete="email" placeholder="nombre@capoycostarica.com" required /></div>
+          </label>
+          <label>Contraseña
+            <div className="login-input"><LockKeyhole size={18}/><input type={showPassword?'text':'password'} name="password" autoComplete="current-password" placeholder="Ingresa tu contraseña" required /><button type="button" className="password-toggle" onClick={()=>setShowPassword(v=>!v)} aria-label={showPassword?'Ocultar contraseña':'Mostrar contraseña'}>{showPassword?<EyeOff size={18}/>:<Eye size={18}/>}</button></div>
+          </label>
+          <div className="login-options"><label className="remember"><input type="checkbox" name="remember"/><span>Recordarme</span></label><a href="mailto:soporte@capoycostarica.com?subject=Recuperar%20acceso%20administrativo">¿Olvidaste tu contraseña?</a></div>
+          <button className="login-submit" type="submit">Entrar al panel <ChevronRight size={18}/></button>
+          {submitted && <div className="login-notice" role="status"><ShieldCheck size={18}/><span><b>Interfaz lista.</b> La autenticación segura se conectará en la fase de usuarios y roles.</span></div>}
+        </form>
+        <div className="login-security"><ShieldCheck size={16}/><span>Acceso exclusivo para personal autorizado de Capoy Costa Rica.</span></div>
+        <p className="login-help">¿Necesitas ayuda? <a href="mailto:soporte@capoycostarica.com">Contacta a soporte</a></p>
+      </div>
+    </section>
+  </main>;
+}
+
 export function App() {
+  const pathname = window.location.pathname.replace(/\/$/, '') || '/';
+  if (pathname === '/admin/login' || pathname === '/login') return <AdminLogin/>;
+
   return <div className="site-shell">
     <section className="hero" id="inicio">
       <div className="hero-overlay" />
