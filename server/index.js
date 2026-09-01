@@ -192,6 +192,45 @@ async function requireSession(req, res, next) {
   }
 }
 
+const dashboardModuleDefinitions = [
+  { key: 'reservations', label: 'Reservas', candidates: ['bookings', 'requests', 'reservations'] },
+  { key: 'tours', label: 'Tours', candidates: ['tours'] },
+  { key: 'customers', label: 'Clientes', candidates: ['customers', 'clients'] },
+  { key: 'providers', label: 'Proveedores', candidates: ['providers', 'allies'] },
+  { key: 'fleet', label: 'Flota', candidates: ['fleet', 'vehicles'] },
+  { key: 'reviews', label: 'Reseñas', candidates: ['reviews'] },
+];
+
+async function findExistingTable(candidates) {
+  for (const table of candidates) {
+    const [rows] = await pool.execute(
+      `SELECT TABLE_NAME
+       FROM information_schema.TABLES
+       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?
+       LIMIT 1`,
+      [table],
+    );
+    if (rows.length) return table;
+  }
+  return null;
+}
+
+async function countWhitelistedTable(table) {
+  const allowed = new Set(dashboardModuleDefinitions.flatMap((item) => item.candidates));
+  if (!allowed.has(table)) throw new Error('dashboard_table_not_allowed');
+  const [rows] = await pool.query(`SELECT COUNT(*) AS total FROM \`${table}\``);
+  return Number(rows[0]?.total || 0);
+}
+
+async function loadDashboardModules() {
+  return Promise.all(dashboardModuleDefinitions.map(async (definition) => {
+    const table = await findExistingTable(definition.candidates);
+    if (!table) return { key: definition.key, label: definition.label, available: false, count: null, table: null };
+    const count = await countWhitelistedTable(table);
+    return { key: definition.key, label: definition.label, available: true, count, table };
+  }));
+}
+
 app.get('/api/health', async (_req, res) => {
   let database = 'not-configured';
   try {
@@ -307,6 +346,48 @@ app.post('/api/auth/logout', sameOriginOnly, requireSession, async (req, res) =>
     clearSessionCookie(res);
   }
   res.json({ ok: true });
+});
+
+app.get('/api/admin/dashboard', requireSession, async (_req, res) => {
+  try {
+    const [modules, adminRows, sessionRows, auditCountRows, activityRows] = await Promise.all([
+      loadDashboardModules(),
+      pool.query("SELECT COUNT(*) AS total FROM admin_users WHERE status = 'active'"),
+      pool.query('SELECT COUNT(*) AS total FROM admin_sessions WHERE expires_at > NOW()'),
+      pool.query('SELECT COUNT(*) AS total FROM admin_audit_log WHERE created_at >= DATE_SUB(NOW(), INTERVAL 24 HOUR)'),
+      pool.query(`SELECT id, event_type, email_attempted, created_at
+                  FROM admin_audit_log
+                  ORDER BY created_at DESC
+                  LIMIT 8`),
+    ]);
+
+    res.json({
+      ok: true,
+      generatedAt: new Date().toISOString(),
+      database: 'ok',
+      metrics: {
+        activeAdmins: Number(adminRows[0][0]?.total || 0),
+        activeSessions: Number(sessionRows[0][0]?.total || 0),
+        audit24h: Number(auditCountRows[0][0]?.total || 0),
+      },
+      modules,
+      revenue: {
+        available: false,
+        amount: null,
+        currency: 'USD',
+        reason: 'No existe todavía una fuente financiera normalizada y verificable.',
+      },
+      activity: activityRows[0].map((row) => ({
+        id: row.id,
+        eventType: row.event_type,
+        email: row.email_attempted,
+        createdAt: row.created_at,
+      })),
+    });
+  } catch (error) {
+    console.error('admin_dashboard_failed', error.message);
+    res.status(503).json({ error: 'No fue posible cargar el dashboard administrativo.' });
+  }
 });
 
 app.use('/api/admin', requireSession);
