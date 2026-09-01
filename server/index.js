@@ -5,6 +5,7 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import { promisify } from 'node:util';
 import { fileURLToPath } from 'node:url';
+import { registerReservationRoutes } from './reservations.js';
 
 const app = express();
 const port = Number(process.env.PORT || 3000);
@@ -389,6 +390,8 @@ app.get('/api/admin/dashboard', requireSession, async (_req, res) => {
     res.status(503).json({ error: 'No fue posible cargar el dashboard administrativo.' });
   }
 });
+
+registerReservationRoutes({ app, pool, requireSession, sameOriginOnly, audit });
 
 app.use('/api/admin', requireSession);
 
