@@ -92,7 +92,7 @@ function AdminLogin() {
             <div className="login-input"><Mail size={18}/><input type="email" name="email" autoComplete="email" placeholder="nombre@capoycostarica.com" maxLength={190} required /></div>
           </label>
           <label>Contraseña
-            <div className="login-input"><LockKeyhole size={18}/><input type={showPassword?'text':'password'} name="password" autoComplete="current-password" placeholder="Ingresa tu contraseña" minLength={12} maxLength={200} required /><button type="button" className="password-toggle" onClick={()=>setShowPassword(v=>!v)} aria-label={showPassword?'Ocultar contraseña':'Mostrar contraseña'}>{showPassword?<EyeOff size={18}/>:<Eye size={18}/>}</button></div>
+            <div className="login-input"><LockKeyhole size={18}/><input type={showPassword?'text':'password'} name="password" autoComplete="current-password" placeholder="Ingresa tu contraseña" minLength={8} maxLength={200} required /><button type="button" className="password-toggle" onClick={()=>setShowPassword(v=>!v)} aria-label={showPassword?'Ocultar contraseña':'Mostrar contraseña'}>{showPassword?<EyeOff size={18}/>:<Eye size={18}/>}</button></div>
           </label>
           <div className="login-options"><label className="remember"><input type="checkbox" name="remember"/><span>Recordarme</span></label><a href="mailto:soporte@capoycostarica.com?subject=Recuperar%20acceso%20administrativo">¿Olvidaste tu contraseña?</a></div>
           <button className="login-submit" type="submit" disabled={loading}>{loading ? 'Verificando…' : <>Entrar al panel <ChevronRight size={18}/></>}</button>
@@ -147,7 +147,7 @@ export function App() {
         <nav className="nav" aria-label="Navegación principal">
           {['Inicio','Tours','Destinos','Galería','FAQ','Contacto'].map((item) => <a key={item} href={`#${item.toLowerCase().replace('í','i')}`}>{item}</a>)}
         </nav>
-        <div className="nav-actions"><a className="phone" href="tel:+50688801234"><Phone size={16}/>+506 8880-1234</a><a className="reserve-btn" href="#tours"><CalendarDays size={17}/>Reservar ahora</a></div>
+        <div className="nav-actions"><a className="admin-login-link" href="/admin/login" data-admin-login aria-label="Iniciar sesión en el panel administrativo">Iniciar sesión</a><a className="phone" href="tel:+50688801234"><Phone size={16}/>+506 8880-1234</a><a className="reserve-btn" href="#tours"><CalendarDays size={17}/>Reservar ahora</a></div>
       </header>
 
       <div className="container hero-content">
