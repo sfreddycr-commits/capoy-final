@@ -1,3 +1,5 @@
+import { registerProviderRoutes } from './providers.js';
+
 const CUSTOMER_STATUSES = new Set(['active', 'inactive']);
 
 function cleanText(value, maxLength) {
@@ -53,6 +55,8 @@ function mapCustomer(row) {
 }
 
 export function registerCustomerRoutes({ app, pool, requireSession, sameOriginOnly, audit }) {
+  registerProviderRoutes({ app, pool, requireSession, sameOriginOnly, audit });
+
   app.get('/api/admin/customers', requireSession, async (req, res) => {
     try {
       const status = cleanText(req.query.status, 32);
