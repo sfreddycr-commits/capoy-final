@@ -1,3 +1,5 @@
+import { registerReviewRoutes } from './reviews.js';
+
 const FLEET_STATUSES = new Set(['active','maintenance','inactive']);
 const VEHICLE_TYPES = new Set(['car','suv','van','minibus','bus','boat','other']);
 
@@ -24,6 +26,8 @@ function fleetPayload(body){
 function mapFleet(row){return{id:Number(row.id),plate:row.plate,name:row.name,vehicleType:row.vehicle_type,brand:row.brand,model:row.model,modelYear:row.model_year===null?null:Number(row.model_year),capacity:Number(row.capacity),status:row.status,notes:row.notes,createdAt:row.created_at,updatedAt:row.updated_at}}
 
 export function registerFleetRoutes({app,pool,requireSession,sameOriginOnly,audit}){
+  registerReviewRoutes({app,pool,requireSession,sameOriginOnly,audit});
+
   app.get('/api/admin/fleet',requireSession,async(req,res)=>{
     try{
       const status=cleanText(req.query.status,32),vehicleType=cleanText(req.query.vehicleType,32),q=cleanText(req.query.q,120);
