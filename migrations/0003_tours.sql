@@ -1,0 +1,35 @@
+CREATE TABLE tours (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  slug VARCHAR(190) NOT NULL,
+  name VARCHAR(180) NOT NULL,
+  destination VARCHAR(160) NOT NULL,
+  short_description VARCHAR(320) NULL,
+  description TEXT NULL,
+  duration VARCHAR(80) NULL,
+  adult_price DECIMAL(12,2) NOT NULL DEFAULT 0.00,
+  child_price DECIMAL(12,2) NULL,
+  currency CHAR(3) NOT NULL DEFAULT 'USD',
+  capacity SMALLINT UNSIGNED NULL,
+  main_image_url VARCHAR(1000) NULL,
+  status VARCHAR(32) NOT NULL DEFAULT 'draft',
+  published_at DATETIME NULL,
+  created_by_admin_id BIGINT UNSIGNED NULL,
+  updated_by_admin_id BIGINT UNSIGNED NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  UNIQUE KEY uq_tours_slug (slug),
+  KEY idx_tours_status (status),
+  KEY idx_tours_destination (destination),
+  KEY idx_tours_created_at (created_at),
+  CONSTRAINT fk_tours_created_by_admin FOREIGN KEY (created_by_admin_id) REFERENCES admin_users(id) ON DELETE SET NULL,
+  CONSTRAINT fk_tours_updated_by_admin FOREIGN KEY (updated_by_admin_id) REFERENCES admin_users(id) ON DELETE SET NULL,
+  CONSTRAINT chk_tours_status CHECK (status IN ('draft','published','inactive')),
+  CONSTRAINT chk_tours_currency CHECK (currency REGEXP '^[A-Z]{3}$'),
+  CONSTRAINT chk_tours_prices CHECK (adult_price >= 0 AND (child_price IS NULL OR child_price >= 0))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+ALTER TABLE reservations
+  ADD COLUMN tour_id BIGINT UNSIGNED NULL AFTER customer_phone,
+  ADD KEY idx_reservations_tour_id (tour_id),
+  ADD CONSTRAINT fk_reservations_tour FOREIGN KEY (tour_id) REFERENCES tours(id) ON DELETE SET NULL;
