@@ -6,6 +6,7 @@ import { ReservationsPage } from './ReservationsPage';
 import { ToursPage } from './ToursPage';
 import { CustomersPage } from './CustomersPage';
 import { ProvidersPage } from './ProvidersPage';
+import { FleetPage } from './FleetPage';
 import './styles.css';
 import './admin.css';
 import './reservations.css';
@@ -19,7 +20,8 @@ const isReservations = pathname === '/admin/reservas';
 const isTours = pathname === '/admin/tours';
 const isCustomers = pathname === '/admin/clientes';
 const isProviders = pathname === '/admin/proveedores';
+const isFleet = pathname === '/admin/flota';
 const isAdminDashboard = pathname === '/admin' || (pathname.startsWith('/admin/') && pathname !== '/admin/login');
 
-const screen = isReservations ? <ReservationsPage/> : isTours ? <ToursPage/> : isCustomers ? <CustomersPage/> : isProviders ? <ProvidersPage/> : isAdminDashboard ? <AdminDashboard/> : <App/>;
+const screen = isReservations ? <ReservationsPage/> : isTours ? <ToursPage/> : isCustomers ? <CustomersPage/> : isProviders ? <ProvidersPage/> : isFleet ? <FleetPage/> : isAdminDashboard ? <AdminDashboard/> : <App/>;
 ReactDOM.createRoot(document.getElementById('root')!).render(<React.StrictMode>{screen}</React.StrictMode>);
