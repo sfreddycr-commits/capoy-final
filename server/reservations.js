@@ -7,14 +7,6 @@ function cleanText(value, maxLength) {
   return String(value ?? '').trim().slice(0, maxLength);
 }
 
-function normalizeEmail(value) {
-  return String(value || '').trim().toLowerCase();
-}
-
-function validEmail(email) {
-  return email.length <= 190 && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
-}
-
 function nullableText(value, maxLength) {
   const text = cleanText(value, maxLength);
   return text || null;
@@ -26,9 +18,7 @@ function referenceCode() {
 }
 
 function createPayload(body) {
-  const customerName = cleanText(body?.customerName, 120);
-  const customerEmail = normalizeEmail(body?.customerEmail);
-  const customerPhone = cleanText(body?.customerPhone, 40);
+  const customerId = Number.parseInt(String(body?.customerId ?? ''), 10);
   const tourId = Number.parseInt(String(body?.tourId ?? ''), 10);
   const travelDate = cleanText(body?.travelDate, 10);
   const adults = Number(body?.adults ?? 1);
@@ -38,25 +28,12 @@ function createPayload(body) {
   const totalAmount = rawAmount === '' || rawAmount === null || rawAmount === undefined ? null : Number(rawAmount);
   const notes = nullableText(body?.notes, 4000);
 
-  if (customerName.length < 2 || !Number.isInteger(tourId) || tourId < 1 || !/^\d{4}-\d{2}-\d{2}$/.test(travelDate)) return { error: 'Nombre, tour y fecha son obligatorios.' };
-  if (customerEmail && !validEmail(customerEmail)) return { error: 'Correo inválido.' };
-  if (!customerEmail && customerPhone.length < 5) return { error: 'Debe indicar correo o teléfono.' };
+  if (!Number.isInteger(customerId) || customerId < 1 || !Number.isInteger(tourId) || tourId < 1 || !/^\d{4}-\d{2}-\d{2}$/.test(travelDate)) return { error: 'Cliente, tour y fecha son obligatorios.' };
   if (!Number.isInteger(adults) || adults < 1 || adults > 99 || !Number.isInteger(children) || children < 0 || children > 99) return { error: 'Cantidad de pasajeros inválida.' };
   if (!STATUSES.has(status)) return { error: 'Estado de reserva inválido.' };
   if (totalAmount !== null && (!Number.isFinite(totalAmount) || totalAmount < 0 || totalAmount > 9999999999.99)) return { error: 'Monto inválido.' };
 
-  return {
-    customerName,
-    customerEmail: customerEmail || null,
-    customerPhone: customerPhone || null,
-    tourId,
-    travelDate,
-    adults,
-    children,
-    status,
-    totalAmount,
-    notes,
-  };
+  return { customerId, tourId, travelDate, adults, children, status, totalAmount, notes };
 }
 
 export function registerReservationRoutes({ app, pool, requireSession, sameOriginOnly, audit }) {
@@ -93,9 +70,11 @@ export function registerReservationRoutes({ app, pool, requireSession, sameOrigi
           SUM(travel_date >= CURDATE() AND status NOT IN ('completed','cancelled')) AS upcomingCount
           FROM reservations`),
         pool.execute(`SELECT COUNT(*) AS total FROM reservations r ${clause}`, params),
-        pool.execute(`SELECT r.id, r.reference_code, r.customer_name, r.customer_email, r.customer_phone, r.tour_id, r.tour_name, r.travel_date, r.adults, r.children, r.status, r.currency, r.total_amount, r.notes, r.source, r.created_at, r.updated_at,
-          t.status AS current_tour_status
-          FROM reservations r LEFT JOIN tours t ON t.id = r.tour_id
+        pool.execute(`SELECT r.id, r.reference_code, r.customer_id, r.customer_name, r.customer_email, r.customer_phone, r.tour_id, r.tour_name, r.travel_date, r.adults, r.children, r.status, r.currency, r.total_amount, r.notes, r.source, r.created_at, r.updated_at,
+          t.status AS current_tour_status, c.status AS current_customer_status
+          FROM reservations r
+          LEFT JOIN tours t ON t.id = r.tour_id
+          LEFT JOIN customers c ON c.id = r.customer_id
           ${clause} ORDER BY r.created_at DESC LIMIT ? OFFSET ?`, [...params, limit, offset]),
       ]);
 
@@ -115,9 +94,12 @@ export function registerReservationRoutes({ app, pool, requireSession, sameOrigi
         reservations: rows.map((row) => ({
           id: Number(row.id),
           referenceCode: row.reference_code,
+          customerId: row.customer_id === null ? null : Number(row.customer_id),
           customerName: row.customer_name,
           customerEmail: row.customer_email,
           customerPhone: row.customer_phone,
+          customerLinked: row.customer_id !== null,
+          currentCustomerStatus: row.current_customer_status || null,
           tourId: row.tour_id === null ? null : Number(row.tour_id),
           tourName: row.tour_name,
           tourLinked: row.tour_id !== null,
@@ -145,12 +127,14 @@ export function registerReservationRoutes({ app, pool, requireSession, sameOrigi
     if (payload.error) return res.status(400).json({ error: payload.error });
 
     try {
-      const [tourRows] = await pool.execute(
-        `SELECT id, name, adult_price, child_price, currency
-         FROM tours WHERE id = ? AND status = 'published' LIMIT 1`,
-        [payload.tourId],
-      );
+      const [[customerRows], [tourRows]] = await Promise.all([
+        pool.execute(`SELECT id, full_name, email, phone FROM customers WHERE id = ? AND status = 'active' LIMIT 1`, [payload.customerId]),
+        pool.execute(`SELECT id, name, adult_price, child_price, currency FROM tours WHERE id = ? AND status = 'published' LIMIT 1`, [payload.tourId]),
+      ]);
+      if (!customerRows.length) return res.status(400).json({ error: 'Selecciona un cliente activo válido.' });
       if (!tourRows.length) return res.status(400).json({ error: 'Selecciona un tour publicado válido.' });
+
+      const customer = customerRows[0];
       const tour = tourRows[0];
       const calculatedTotal = Number(tour.adult_price) * payload.adults + Number(tour.child_price ?? tour.adult_price) * payload.children;
       const totalAmount = payload.totalAmount === null ? calculatedTotal : payload.totalAmount;
@@ -159,12 +143,12 @@ export function registerReservationRoutes({ app, pool, requireSession, sameOrigi
       for (let attempt = 0; attempt < 3; attempt += 1) {
         try {
           const [result] = await pool.execute(
-            `INSERT INTO reservations (reference_code, customer_name, customer_email, customer_phone, tour_id, tour_name, travel_date, adults, children, status, currency, total_amount, notes, source, created_by_admin_id, updated_by_admin_id)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'admin', ?, ?)`,
-            [code, payload.customerName, payload.customerEmail, payload.customerPhone, payload.tourId, tour.name, payload.travelDate, payload.adults, payload.children, payload.status, tour.currency, totalAmount, payload.notes, req.admin.id, req.admin.id],
+            `INSERT INTO reservations (reference_code, customer_name, customer_email, customer_phone, customer_id, tour_id, tour_name, travel_date, adults, children, status, currency, total_amount, notes, source, created_by_admin_id, updated_by_admin_id)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'admin', ?, ?)`,
+            [code, customer.full_name, customer.email, customer.phone, payload.customerId, payload.tourId, tour.name, payload.travelDate, payload.adults, payload.children, payload.status, tour.currency, totalAmount, payload.notes, req.admin.id, req.admin.id],
           );
-          await audit(req, 'reservation_created', { userId: req.admin.id, email: req.admin.email, metadata: { reservationId: result.insertId, referenceCode: code, tourId: payload.tourId } });
-          return res.status(201).json({ ok: true, reservation: { id: Number(result.insertId), referenceCode: code, tourId: payload.tourId, tourName: tour.name } });
+          await audit(req, 'reservation_created', { userId: req.admin.id, email: req.admin.email, metadata: { reservationId: result.insertId, referenceCode: code, customerId: payload.customerId, tourId: payload.tourId } });
+          return res.status(201).json({ ok: true, reservation: { id: Number(result.insertId), referenceCode: code, customerId: payload.customerId, customerName: customer.full_name, tourId: payload.tourId, tourName: tour.name } });
         } catch (error) {
           if (error?.code !== 'ER_DUP_ENTRY' || attempt === 2) throw error;
           code = referenceCode();
