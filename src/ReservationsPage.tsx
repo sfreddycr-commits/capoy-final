@@ -23,11 +23,12 @@ import {
 
 type AdminUser = { id:number; displayName:string; email:string; role:string };
 type Reservation = {
-  id:number; referenceCode:string; customerName:string; customerEmail:string|null; customerPhone:string|null;
+  id:number; referenceCode:string; customerId:number|null; customerName:string; customerEmail:string|null; customerPhone:string|null; customerLinked:boolean; currentCustomerStatus:string|null;
   tourId:number|null; tourName:string; tourLinked:boolean; currentTourStatus:string|null; travelDate:string; adults:number; children:number; status:string; currency:string;
   totalAmount:number|null; notes:string|null; source:string; createdAt:string; updatedAt:string;
 };
 type TourOption = { id:number; name:string; destination:string; adultPrice:number; childPrice:number|null; currency:string; status:string };
+type CustomerOption = { id:number; fullName:string; email:string|null; phone:string|null; country:string|null; language:string };
 type Payload = {
   summary:{total:number;new:number;confirmed:number;completed:number;cancelled:number;upcoming:number};
   pagination:{page:number;limit:number;total:number;pages:number};
@@ -53,6 +54,7 @@ export function ReservationsPage() {
   const [user,setUser] = useState<AdminUser|null>(null);
   const [data,setData] = useState<Payload|null>(null);
   const [tourOptions,setTourOptions] = useState<TourOption[]>([]);
+  const [customerOptions,setCustomerOptions] = useState<CustomerOption[]>([]);
   const [loading,setLoading] = useState(true);
   const [error,setError] = useState('');
   const [query,setQuery] = useState('');
@@ -69,12 +71,13 @@ export function ReservationsPage() {
       const params = new URLSearchParams({page:String(nextPage),limit:'25'});
       if (nextStatus !== 'all') params.set('status',nextStatus);
       if (nextQuery.trim()) params.set('q',nextQuery.trim());
-      const [sessionResponse,reservationsResponse,toursResponse] = await Promise.all([
+      const [sessionResponse,reservationsResponse,toursResponse,customersResponse] = await Promise.all([
         fetch('/api/auth/session',{credentials:'same-origin'}),
         fetch(`/api/admin/reservations?${params.toString()}`,{credentials:'same-origin'}),
         fetch('/api/admin/tours/options',{credentials:'same-origin'}),
+        fetch('/api/admin/customers/options',{credentials:'same-origin'}),
       ]);
-      if (sessionResponse.status===401 || reservationsResponse.status===401 || toursResponse.status===401) { window.location.assign('/admin/login'); return; }
+      if ([sessionResponse,reservationsResponse,toursResponse,customersResponse].some((response)=>response.status===401)) { window.location.assign('/admin/login'); return; }
       if (!sessionResponse.ok) throw new Error('No fue posible validar tu sesión.');
       if (!reservationsResponse.ok) {
         const body = await reservationsResponse.json().catch(()=>({}));
@@ -84,10 +87,15 @@ export function ReservationsPage() {
         const body = await toursResponse.json().catch(()=>({}));
         throw new Error(body.error || 'No fue posible cargar los tours publicados.');
       }
+      if (!customersResponse.ok) {
+        const body = await customersResponse.json().catch(()=>({}));
+        throw new Error(body.error || 'No fue posible cargar los clientes activos.');
+      }
       const sessionData = await sessionResponse.json();
       const reservationsData = await reservationsResponse.json();
       const toursData = await toursResponse.json();
-      setUser(sessionData.user); setData(reservationsData); setTourOptions(toursData.tours || []); setPage(nextPage);
+      const customersData = await customersResponse.json();
+      setUser(sessionData.user); setData(reservationsData); setTourOptions(toursData.tours || []); setCustomerOptions(customersData.customers || []); setPage(nextPage);
     } catch (reason) { setError(reason instanceof Error ? reason.message : 'No fue posible cargar las reservas.'); }
     finally { setLoading(false); }
   }
@@ -104,7 +112,7 @@ export function ReservationsPage() {
     const formElement = event.currentTarget;
     const form = new FormData(formElement);
     const payload = {
-      customerName:String(form.get('customerName')||''), customerEmail:String(form.get('customerEmail')||''), customerPhone:String(form.get('customerPhone')||''),
+      customerId:Number(form.get('customerId')||0),
       tourId:Number(form.get('tourId')||0), travelDate:String(form.get('travelDate')||''), adults:Number(form.get('adults')||1), children:Number(form.get('children')||0),
       totalAmount:String(form.get('totalAmount')||''), notes:String(form.get('notes')||''), status:'new',
     };
@@ -173,7 +181,7 @@ export function ReservationsPage() {
         {!loading && !error && data && data.reservations.length>0 && <>
           <div className="reservations-table-wrap"><table><thead><tr><th>Reserva</th><th>Cliente</th><th>Tour / fecha</th><th>Pasajeros</th><th>Monto</th><th>Estado</th></tr></thead><tbody>{data.reservations.map((item)=><tr key={item.id}>
             <td><strong>{item.referenceCode}</strong><small>{dateOnly(item.createdAt)}</small></td>
-            <td><strong>{item.customerName}</strong><small>{item.customerEmail || item.customerPhone || 'Sin contacto'}</small></td>
+            <td><strong>{item.customerName}</strong><small>{item.customerEmail || item.customerPhone || 'Sin contacto'} · {item.customerLinked ? 'Cliente vinculado' : 'Reserva histórica'}</small></td>
             <td><strong>{item.tourName}</strong><small>{dateOnly(item.travelDate)} · {item.tourLinked ? 'Tour vinculado' : 'Reserva histórica'}</small></td>
             <td><strong>{item.adults + item.children}</strong><small>{item.adults} adulto(s) · {item.children} niño(s)</small></td>
             <td><strong>{money(item.totalAmount,item.currency)}</strong><small>{item.source}</small></td>
@@ -186,12 +194,13 @@ export function ReservationsPage() {
 
     {drawer && <div className="reservation-modal"><button className="reservation-modal-backdrop" onClick={()=>setDrawer(false)} aria-label="Cerrar"/><section><header><div><span>NUEVA RESERVA</span><h2>Registrar solicitud</h2></div><button onClick={()=>setDrawer(false)}><X size={20}/></button></header>
       <form onSubmit={createReservation}>
-        <div className="reservation-form-grid"><label>Nombre del cliente<input name="customerName" maxLength={120} required/></label><label>Tour publicado<select name="tourId" required defaultValue=""><option value="" disabled>Selecciona un tour</option>{tourOptions.map((tour)=><option key={tour.id} value={tour.id}>{tour.name} · {tour.destination} · {money(tour.adultPrice,tour.currency)}</option>)}</select></label><label>Correo<input name="customerEmail" type="email" maxLength={190}/></label><label>Teléfono<input name="customerPhone" maxLength={40}/></label><label>Fecha del viaje<input name="travelDate" type="date" required/></label><label>Monto estimado<input name="totalAmount" type="number" min="0" step="0.01" placeholder="Vacío = cálculo automático"/></label><label>Adultos<input name="adults" type="number" min="1" max="99" defaultValue="1" required/></label><label>Niños<input name="children" type="number" min="0" max="99" defaultValue="0" required/></label></div>
+        <div className="reservation-form-grid"><label>Cliente activo<select name="customerId" required defaultValue=""><option value="" disabled>Selecciona un cliente</option>{customerOptions.map((customer)=><option key={customer.id} value={customer.id}>{customer.fullName} · {customer.email || customer.phone || 'Sin contacto'}</option>)}</select></label><label>Tour publicado<select name="tourId" required defaultValue=""><option value="" disabled>Selecciona un tour</option>{tourOptions.map((tour)=><option key={tour.id} value={tour.id}>{tour.name} · {tour.destination} · {money(tour.adultPrice,tour.currency)}</option>)}</select></label><label>Fecha del viaje<input name="travelDate" type="date" required/></label><label>Monto estimado<input name="totalAmount" type="number" min="0" step="0.01" placeholder="Vacío = cálculo automático"/></label><label>Adultos<input name="adults" type="number" min="1" max="99" defaultValue="1" required/></label><label>Niños<input name="children" type="number" min="0" max="99" defaultValue="0" required/></label></div>
         <label>Notas<textarea name="notes" rows={4} maxLength={4000} placeholder="Detalles operativos, punto de encuentro, necesidades especiales…"/></label>
+        {customerOptions.length===0 && <p className="reservation-form-help"><Users size={16}/> No hay clientes activos. Crea o reactiva un cliente antes de registrar nuevas reservas.</p>}
         {tourOptions.length===0 && <p className="reservation-form-help"><ClipboardList size={16}/> No hay tours publicados. Publica al menos un tour antes de crear nuevas reservas.</p>}
-        <p className="reservation-form-help"><UserRound size={16}/> El nombre, moneda y precio base del tour se toman del catálogo oficial. El nombre queda guardado como fotografía histórica de la reserva.</p>
+        <p className="reservation-form-help"><UserRound size={16}/> Nombre, correo y teléfono se copian del cliente seleccionado y quedan como fotografía histórica. El tour conserva el mismo patrón de snapshot.</p>
         {createError && <div className="reservation-form-error">{createError}</div>}
-        <footer><button type="button" onClick={()=>setDrawer(false)}>Cancelar</button><button className="primary" disabled={creating || tourOptions.length===0}>{creating?<><Loader2 className="spin" size={17}/> Guardando…</>:<><CircleDollarSign size={17}/> Crear reserva</>}</button></footer>
+        <footer><button type="button" onClick={()=>setDrawer(false)}>Cancelar</button><button className="primary" disabled={creating || tourOptions.length===0 || customerOptions.length===0}>{creating?<><Loader2 className="spin" size={17}/> Guardando…</>:<><CircleDollarSign size={17}/> Crear reserva</>}</button></footer>
       </form>
     </section></div>}
   </div>;
