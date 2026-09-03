@@ -1,4 +1,5 @@
 import crypto from 'node:crypto';
+import { registerTourRoutes } from './tours.js';
 
 const STATUSES = new Set(['new', 'contacted', 'quoted', 'confirmed', 'completed', 'cancelled']);
 
@@ -62,6 +63,8 @@ function createPayload(body) {
 }
 
 export function registerReservationRoutes({ app, pool, requireSession, sameOriginOnly, audit }) {
+  registerTourRoutes({ app, pool, requireSession, sameOriginOnly, audit });
+
   app.get('/api/admin/reservations', requireSession, async (req, res) => {
     try {
       const status = cleanText(req.query.status, 32);
