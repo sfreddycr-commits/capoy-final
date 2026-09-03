@@ -22,7 +22,7 @@ function customerPayload(body) {
   const email = normalizeEmail(body?.email);
   const phone = cleanText(body?.phone, 40);
   const country = nullableText(body?.country, 100);
-  const language = cleanText(body?.language || 'es', 2).toLowerCase();
+  const language = String(body?.language || 'es').trim().toLowerCase();
   const status = cleanText(body?.status || 'active', 32);
   const marketingOptIn = body?.marketingOptIn === true;
   const notes = nullableText(body?.notes, 4000);
@@ -88,6 +88,20 @@ export function registerCustomerRoutes({ app, pool, requireSession, sameOriginOn
     } catch (error) {
       console.error('customers_list_failed', error.message);
       res.status(503).json({ error: 'No fue posible cargar los clientes.' });
+    }
+  });
+
+  app.get('/api/admin/customers/options', requireSession, async (_req, res) => {
+    try {
+      const [rows] = await pool.query(`SELECT id, full_name, email, phone, country, language
+        FROM customers WHERE status = 'active' ORDER BY full_name ASC LIMIT 500`);
+      res.json({ ok: true, customers: rows.map((row) => ({
+        id: Number(row.id), fullName: row.full_name, email: row.email, phone: row.phone,
+        country: row.country, language: row.language,
+      })) });
+    } catch (error) {
+      console.error('customer_options_failed', error.message);
+      res.status(503).json({ error: 'No fue posible cargar las opciones de clientes.' });
     }
   });
 
