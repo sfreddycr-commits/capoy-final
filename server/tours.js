@@ -1,3 +1,5 @@
+import { registerCustomerRoutes } from './customers.js';
+
 const TOUR_STATUSES = new Set(['draft', 'published', 'inactive']);
 
 function cleanText(value, maxLength) {
@@ -62,6 +64,8 @@ function createPayload(body) {
 }
 
 export function registerTourRoutes({ app, pool, requireSession, sameOriginOnly, audit }) {
+  registerCustomerRoutes({ app, pool, requireSession, sameOriginOnly, audit });
+
   app.get('/api/admin/tours', requireSession, async (req, res) => {
     try {
       const status = cleanText(req.query.status, 32);
