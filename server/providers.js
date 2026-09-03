@@ -1,3 +1,5 @@
+import { registerFleetRoutes } from './fleet.js';
+
 const PROVIDER_STATUSES = new Set(['active', 'inactive']);
 const SERVICE_TYPES = new Set(['tour_operator', 'transport', 'lodging', 'guide', 'activity', 'restaurant', 'other']);
 
@@ -56,6 +58,8 @@ function mapProvider(row) {
 }
 
 export function registerProviderRoutes({ app, pool, requireSession, sameOriginOnly, audit }) {
+  registerFleetRoutes({ app, pool, requireSession, sameOriginOnly, audit });
+
   app.get('/api/admin/providers', requireSession, async (req, res) => {
     try {
       const status = cleanText(req.query.status, 32);
