@@ -63,8 +63,38 @@ function createPayload(body) {
   };
 }
 
+function mapPublicTour(row) {
+  return {
+    id: Number(row.id),
+    slug: row.slug,
+    name: row.name,
+    destination: row.destination,
+    shortDescription: row.short_description,
+    duration: row.duration,
+    adultPrice: Number(row.adult_price),
+    childPrice: row.child_price === null ? null : Number(row.child_price),
+    currency: row.currency,
+    capacity: row.capacity === null ? null : Number(row.capacity),
+    mainImageUrl: row.main_image_url,
+    publishedAt: row.published_at,
+  };
+}
+
 export function registerTourRoutes({ app, pool, requireSession, sameOriginOnly, audit }) {
   registerCustomerRoutes({ app, pool, requireSession, sameOriginOnly, audit });
+
+  app.get('/api/public/tours', async (_req, res) => {
+    try {
+      const [rows] = await pool.query(`SELECT id, slug, name, destination, short_description, duration, adult_price, child_price, currency, capacity, main_image_url, published_at
+        FROM tours
+        WHERE status = 'published'
+        ORDER BY COALESCE(published_at, created_at) DESC, id DESC`);
+      res.json({ ok: true, total: rows.length, tours: rows.map(mapPublicTour) });
+    } catch (error) {
+      console.error('public_tours_list_failed', error.message);
+      res.status(503).json({ error: 'No fue posible cargar los tours disponibles.' });
+    }
+  });
 
   app.get('/api/admin/tours', requireSession, async (req, res) => {
     try {
