@@ -1,3 +1,5 @@
+import { registerUserRoutes } from './users.js';
+
 const ALLOWED_KEYS = new Set([
   'hero_eyebrow','hero_title','hero_lead','hero_primary_cta','hero_secondary_cta','hero_image',
   'contact_phone','contact_email','contact_location','cta_title','cta_copy','footer_copy',
@@ -6,6 +8,8 @@ function clean(value,max=5000){return String(value??'').trim().slice(0,max)}
 function validUrl(value){if(!value)return true;try{const u=new URL(value);return u.protocol==='http:'||u.protocol==='https:'}catch{return false}}
 
 export function registerCmsRoutes({app,pool,requireSession,sameOriginOnly,audit}){
+  registerUserRoutes({app,pool,requireSession,sameOriginOnly,audit});
+
   app.get('/api/public/cms', async (_req,res)=>{
     try{
       const [rows]=await pool.query('SELECT setting_key,setting_value FROM cms_settings');
