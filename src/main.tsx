@@ -13,6 +13,7 @@ import { UsersPage } from './UsersPage';
 import { SettingsPage } from './SettingsPage';
 import { AuditPage } from './AuditPage';
 import { PublicCmsBridge } from './PublicCmsBridge';
+import { PublicToursBridge } from './PublicToursBridge';
 import './styles.css';
 import './admin.css';
 import './reservations.css';
@@ -38,6 +39,6 @@ const isSettings = pathname === '/admin/configuracion';
 const isAudit = pathname === '/admin/auditoria';
 const isAdminDashboard = pathname === '/admin' || (pathname.startsWith('/admin/') && pathname !== '/admin/login');
 
-const publicScreen = <><App/><PublicCmsBridge/></>;
+const publicScreen = <><App/><PublicCmsBridge/><PublicToursBridge/></>;
 const screen = isReservations ? <ReservationsPage/> : isTours ? <ToursPage/> : isCustomers ? <CustomersPage/> : isProviders ? <ProvidersPage/> : isFleet ? <FleetPage/> : isReviews ? <ReviewsPage/> : isCms ? <CmsPage/> : isUsers ? <UsersPage/> : isSettings ? <SettingsPage/> : isAudit ? <AuditPage/> : isAdminDashboard ? <AdminDashboard/> : publicScreen;
 ReactDOM.createRoot(document.getElementById('root')!).render(<React.StrictMode>{screen}</React.StrictMode>);
