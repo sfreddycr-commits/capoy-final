@@ -1,5 +1,6 @@
 import crypto from 'node:crypto';
 import { promisify } from 'node:util';
+import { registerSettingsRoutes } from './settings.js';
 
 const scryptAsync = promisify(crypto.scrypt);
 const USER_ROLES = new Set(['owner','admin']);
@@ -14,6 +15,7 @@ function requireOwner(req,res,next){if(req.admin?.role!=='owner')return res.stat
 function mapUser(row){return{id:Number(row.id),email:row.email,displayName:row.display_name,role:row.role,status:row.status,lastLoginAt:row.last_login_at,passwordChangedAt:row.password_changed_at,createdAt:row.created_at,updatedAt:row.updated_at,activeSessions:Number(row.active_sessions||0)}}
 
 export function registerUserRoutes({app,pool,requireSession,sameOriginOnly,audit}){
+  registerSettingsRoutes({app,pool,requireSession,sameOriginOnly,audit});
   app.get('/api/admin/users',requireSession,requireOwner,async(_req,res)=>{
     try{
       const [rows]=await pool.query(`SELECT u.id,u.email,u.display_name,u.role,u.status,u.last_login_at,u.password_changed_at,u.created_at,u.updated_at,
