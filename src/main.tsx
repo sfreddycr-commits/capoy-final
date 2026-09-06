@@ -9,6 +9,7 @@ import { ProvidersPage } from './ProvidersPage';
 import { FleetPage } from './FleetPage';
 import { ReviewsPage } from './ReviewsPage';
 import { CmsPage } from './CmsPage';
+import { UsersPage } from './UsersPage';
 import { PublicCmsBridge } from './PublicCmsBridge';
 import './styles.css';
 import './admin.css';
@@ -17,6 +18,7 @@ import './tours.css';
 import './customers.css';
 import './providers.css';
 import './cms.css';
+import './users.css';
 import './login-entry.css';
 
 const pathname = window.location.pathname.replace(/\/$/, '') || '/';
@@ -27,8 +29,9 @@ const isProviders = pathname === '/admin/proveedores';
 const isFleet = pathname === '/admin/flota';
 const isReviews = pathname === '/admin/resenas';
 const isCms = pathname === '/admin/cms';
+const isUsers = pathname === '/admin/usuarios';
 const isAdminDashboard = pathname === '/admin' || (pathname.startsWith('/admin/') && pathname !== '/admin/login');
 
 const publicScreen = <><App/><PublicCmsBridge/></>;
-const screen = isReservations ? <ReservationsPage/> : isTours ? <ToursPage/> : isCustomers ? <CustomersPage/> : isProviders ? <ProvidersPage/> : isFleet ? <FleetPage/> : isReviews ? <ReviewsPage/> : isCms ? <CmsPage/> : isAdminDashboard ? <AdminDashboard/> : publicScreen;
+const screen = isReservations ? <ReservationsPage/> : isTours ? <ToursPage/> : isCustomers ? <CustomersPage/> : isProviders ? <ProvidersPage/> : isFleet ? <FleetPage/> : isReviews ? <ReviewsPage/> : isCms ? <CmsPage/> : isUsers ? <UsersPage/> : isAdminDashboard ? <AdminDashboard/> : publicScreen;
 ReactDOM.createRoot(document.getElementById('root')!).render(<React.StrictMode>{screen}</React.StrictMode>);
