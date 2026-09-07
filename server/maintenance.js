@@ -17,9 +17,9 @@ export function registerMaintenanceRoutes({ app, pool, requireSession }) {
       ['cms_settings', ['setting_value'], 'setting_key'],
       ['app_settings', ['setting_value'], 'setting_key'],
       ['tours', ['name', 'destination', 'short_description', 'description', 'duration'], 'id'],
-      ['customers', ['full_name', 'phone', 'country', 'city', 'notes'], 'id'],
-      ['providers', ['name', 'contact_name', 'phone', 'address', 'notes'], 'id'],
-      ['fleet', ['plate', 'brand', 'model', 'capacity_label', 'driver_name', 'driver_phone', 'notes'], 'id'],
+      ['customers', ['full_name', 'phone', 'country', 'notes'], 'id'],
+      ['providers', ['name', 'contact_name', 'phone', 'notes'], 'id'],
+      ['fleet', ['plate', 'brand', 'model', 'driver_name', 'driver_phone', 'notes'], 'id'],
       ['reviews', ['author_name', 'author_country', 'title', 'body'], 'id'],
       ['reservations', ['customer_name', 'notes'], 'id'],
       ['admin_users', ['display_name'], 'id'],
@@ -37,9 +37,14 @@ export function registerMaintenanceRoutes({ app, pool, requireSession }) {
     };
 
     const report = { fixedRows: 0, errors: [], perTable: {} };
-    for (const [table, cols, pkCol] of tables) {
+    for (const [table, colsWanted, pkCol] of tables) {
       report.perTable[table] = 0;
       try {
+        // Only use columns that actually exist in the table.
+        const [colsRows] = await pool.query(`SHOW COLUMNS FROM ${table}`);
+        const allCols = colsRows.map(r => r.Field);
+        const cols = colsWanted.filter(c => allCols.includes(c));
+        if (cols.length === 0) continue;
         const selectCols = [pkCol, ...cols].join(',');
         const [rows] = await pool.query(`SELECT ${selectCols} FROM ${table}`);
         for (const row of rows) {
