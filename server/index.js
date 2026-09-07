@@ -40,6 +40,15 @@ const pool = dbConfigured ? mysql.createPool({
   connectionLimit: 10,
   queueLimit: 0,
   connectTimeout: 5000,
+  // CRITICAL: charset must be utf8mb4 to read accented characters / emojis correctly.
+  // Without this, mysql2 defaults to 'utf8' (which MySQL aliases as utf8mb3, max 3 bytes),
+  // causing mojibake like "fÃ¡ciles" instead of "fáciles" when the DB stores utf8mb4.
+  charset: 'utf8mb4_unicode_ci',
+  // Required for some MySQL 8 servers behind firewalls / chunked responses.
+  multipleStatements: false,
+  dateStrings: false,
+  supportBigNumbers: true,
+  bigNumberStrings: false,
 }) : null;
 
 app.disable('x-powered-by');
