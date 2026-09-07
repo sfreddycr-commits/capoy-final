@@ -464,6 +464,105 @@ app.get('/api/admin/dashboard', requireSession, async (_req, res) => {
 
 registerReservationRoutes({ app, pool, requireSession, sameOriginOnly, audit });
 
+// Boutique status page (public, no auth) — lightweight read-only.
+app.get('/api/public/status', async (_req, res) => {
+  res.setHeader('Cache-Control', 'public, max-age=15');
+  res.setHeader('X-Robots-Tag', 'noindex');
+  let db = 'not-configured';
+  let mysqlLatencyMs = null;
+  if (pool) {
+    const t0 = Date.now();
+    try {
+      await pool.query('SELECT 1');
+      db = 'ok';
+      mysqlLatencyMs = Date.now() - t0;
+    } catch { db = 'error'; }
+  }
+  res.json({
+    status: db === 'ok' ? 'operational' : db === 'error' ? 'degraded' : 'unconfigured',
+    service: 'capoy-tours',
+    checkedAt: new Date().toISOString(),
+    components: {
+      database: db,
+      mysqlLatencyMs,
+    },
+    monitorUrl: 'https://capoycostarica.com/status',
+  });
+});
+
+app.get('/status', (_req, res) => {
+  res.setHeader('Content-Type', 'text/html; charset=utf-8');
+  res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+  res.setHeader('X-Robots-Tag', 'noindex');
+  res.send(`<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>Capoy Tours — Estado del sistema</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+  :root{--ok:#16a34a;--warn:#d97706;--err:#dc2626;--bg:#0b5a35;--card:#fff;--ink:#14271f;--mut:#5a6e63;--line:#dfe6e0}
+  *{box-sizing:border-box}
+  body{margin:0;font-family:'DM Sans',system-ui,sans-serif;background:#f6f8f5;color:var(--ink);padding:0}
+  .wrap{max-width:760px;margin:0 auto;padding:32px 20px 64px}
+  .hero{background:linear-gradient(135deg,#0b5a35 0%,#0a4a2f 100%);color:#fff;border-radius:18px;padding:36px 28px;box-shadow:0 14px 40px rgba(11,90,53,.18)}
+  .hero h1{margin:0 0 8px;font-size:32px;letter-spacing:-.5px}
+  .hero p{margin:0;opacity:.8}
+  .badge{display:inline-flex;align-items:center;gap:8px;background:rgba(255,255,255,.15);padding:6px 12px;border-radius:999px;font-size:13px;font-weight:700}
+  .dot{width:9px;height:9px;border-radius:50%;background:#86efac;box-shadow:0 0 0 4px rgba(134,239,172,.25);animation:p 2s ease-in-out infinite}
+  @keyframes p{0%,100%{transform:scale(1)}50%{transform:scale(1.25)}}
+  .grid{display:grid;gap:14px;margin-top:24px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:18px 20px;display:flex;justify-content:space-between;align-items:center}
+  .card strong{display:block}
+  .card small{color:var(--mut);font-size:13px}
+  .ok{color:var(--ok)}
+  .err{color:var(--err)}
+  .warn{color:var(--warn)}
+  footer{margin-top:36px;text-align:center;color:var(--mut);font-size:13px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="hero">
+    <div class="badge"><span class="dot"></span><span id="status-text">Comprobando…</span></div>
+    <h1 style="margin-top:14px">Capoy Tours</h1>
+    <p>Estado operativo del sistema de reservas y tours.</p>
+  </div>
+  <div class="grid">
+    <div class="card"><strong>Reservas y tours</strong><small>API + landing + persistencia</small><span id="c-app">—</span></div>
+    <div class="card"><strong>Base de datos (MySQL)</strong><small>Latencia en vivo</small><span id="c-db">—</span></div>
+    <div class="card"><strong>Imágenes y archivos</strong><small>Persistencia validada</small><span class="ok">OK</span></div>
+  </div>
+  <footer>
+    <p>Endpoint programático: <a href="/api/public/status">/api/public/status</a> (JSON).</p>
+    <p>Versión <span id="version">—</span> · Comprobado <span id="checked-at">—</span></p>
+  </footer>
+</div>
+<script>
+async function refresh() {
+  try {
+    const r = await fetch('/api/public/status', { credentials: 'omit', cache: 'no-store' });
+    const d = await r.json();
+    document.getElementById('c-app').innerHTML = '<span class="'+ (d.status==='operational'?'ok':d.status==='degraded'?'warn':'err')+'">'+d.status+'</span>';
+    document.getElementById('c-db').innerHTML = (d.components.database === 'ok')
+      ? '<span class="ok">OK · '+d.components.mysqlLatencyMs+' ms</span>'
+      : '<span class="err">'+d.components.database+'</span>';
+    const services = {operational:'Operacional',degraded:'Degradado',unconfigured:'Sin configurar'};
+    document.getElementById('status-text').textContent = services[d.status] || d.status;
+    document.getElementById('version').textContent = d.version || 'dev';
+    document.getElementById('checked-at').textContent = new Date(d.checkedAt).toLocaleString('es-CR');
+  } catch (e) {
+    document.getElementById('status-text').textContent = 'Caído';
+    document.getElementById('c-app').innerHTML = '<span class="err">indisponible</span>';
+  }
+}
+refresh();
+setInterval(refresh, 30000);
+</script>
+</body>
+</html>`);
+});
+
 app.use('/api/admin', requireSession);
 
 app.use(async (req, res, next) => {
