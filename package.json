@@ -9,7 +9,8 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "start": "node server/index.js"
+    "start": "node server/index.js",
+    "prebuild": "node scripts/write-git-sha.mjs"
   },
   "dependencies": {
     "@vitejs/plugin-react": "latest",
