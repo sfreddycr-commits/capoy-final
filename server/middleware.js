@@ -136,8 +136,19 @@ export function cacheControlMiddleware(req, res, next) {
  */
 export function longCacheForHashedAssets(distPath) {
   return function (req, res, next) {
-    // Vite emits assets as /assets/<hash>-<name>.{js,css}
-    if (req.path.startsWith('/assets/') && /\/assets\/[A-Za-z0-9_-]+-[A-Za-z0-9_.-]+$/.test(req.path)) {
+    // Vite emits assets as /assets/<hash>-<name>.{js,css} (e.g. /assets/index-D3UKU-jt.js).
+    // Match a hash-prefixed file name: at least one `-` after 8+ alphanumeric chars.
+    if (
+      req.path.startsWith('/assets/') &&
+      /\/assets\/[A-Za-z0-9_-]{8,}\.js$/.test(req.path)
+    ) {
+      res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+      return next();
+    }
+    if (
+      req.path.startsWith('/assets/') &&
+      /\/assets\/[A-Za-z0-9_-]{8,}\.css$/.test(req.path)
+    ) {
       res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
       return next();
     }
