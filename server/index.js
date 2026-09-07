@@ -55,9 +55,7 @@ app.use(compressionMiddleware);
 // Public rate limits
 app.use(rateLimit({ windowMs: 60_000, max: 300, name: 'global' }));
 
-// Cache control: 1h default; immutable for hashed Vite assets
-app.use(longCacheForHashedAssets(dist));
-app.use(cacheControlMiddleware);
+// Cache control defaults are handled per-path by express.static below via setHeaders.
 
 function normalizeEmail(value) {
   return String(value || '').trim().toLowerCase();
@@ -472,7 +470,23 @@ app.use(async (req, res, next) => {
 // longCacheForHashedAssets (immutable) and cacheControlMiddleware (1h default).
 // We override maxAge to '0' on the global handler so the explicit per-route
 // Cache-Control headers from the middleware win.
-app.use(express.static(dist, { index: false, maxAge: 0, etag: true, lastModified: true, immutable: false }));
+app.use(express.static(dist, {
+  index: false,
+  maxAge: '1d',
+  etag: true,
+  lastModified: true,
+  setHeaders(res, filePath) {
+    const ext = filePath.split('.').pop()?.toLowerCase();
+    if (ext === 'js' || ext === 'css' || ext === 'woff2') {
+      // Vite emits hashed filenames; cache them for a year.
+      res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+    } else if (filePath.endsWith('index.html')) {
+      res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+    } else {
+      res.setHeader('Cache-Control', 'public, max-age=3600');
+    }
+  },
+}));
 app.use(
   '/uploads',
   express.static(path.join(process.cwd(), 'uploads'), {
