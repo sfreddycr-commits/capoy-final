@@ -1,0 +1,13 @@
+[Unit]
+Description=Periodic mount-restore check for capoy-final-ilvlxb uploads
+Requires=docker.service
+
+[Timer]
+# Check every 2 minutes — covers normal redeploy frequency without spamming Docker
+OnBootSec=30
+OnUnitActiveSec=120
+AccuracySec=10
+Unit=restore-capoy-uploads.service
+
+[Install]
+WantedBy=timers.target

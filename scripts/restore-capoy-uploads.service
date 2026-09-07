@@ -1,0 +1,35 @@
+#!/bin/bash
+# restore-capoy-uploads.service
+# Managed at /etc/systemd/system/restore-capoy-uploads.service
+# Installed via:
+#   cp restore-capoy-uploads.service /etc/systemd/system/
+#   systemctl daemon-reload
+#   systemctl enable --now restore-capoy-uploads.timer
+
+[Unit]
+Description=Auto-restore uploads named volume mount after Dokploy redeploys
+Documentation=https://local/capoy
+After=docker.service
+Requires=docker.service
+ConditionPathExists=/srv/capoy-uploads/post-deploy-uploads-restore.sh
+
+[Service]
+Type=oneshot
+ExecStart=/srv/capoy-uploads/post-deploy-uploads-restore.sh
+TimeoutStartSec=120
+StandardOutput=journal
+StandardError=journal
+PrivateTmp=false
+RemainAfterExit=no
+
+# Hardening
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/srv/capoy-uploads
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+
+[Install]
+WantedBy=multi-user.target
