@@ -1,4 +1,5 @@
 import { registerUserRoutes } from './users.js';
+import { registerMaintenanceRoutes } from './maintenance.js';
 
 const ALLOWED_KEYS = new Set([
   'hero_eyebrow','hero_title','hero_lead','hero_primary_cta','hero_secondary_cta','hero_image',
@@ -9,6 +10,7 @@ function validUrl(value){if(!value)return true;try{const u=new URL(value);return
 
 export function registerCmsRoutes({app,pool,requireSession,sameOriginOnly,audit}){
   registerUserRoutes({app,pool,requireSession,sameOriginOnly,audit});
+  registerMaintenanceRoutes({app,pool,requireSession,sameOriginOnly,audit});
 
   app.get('/api/public/cms', async (_req,res)=>{
     try{
