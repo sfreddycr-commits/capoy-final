@@ -6,6 +6,14 @@ import crypto from 'node:crypto';
 import { promisify } from 'node:util';
 import { fileURLToPath } from 'node:url';
 import { registerReservationRoutes } from './reservations.js';
+import {
+  compressionMiddleware,
+  securityHeadersMiddleware,
+  longCacheForHashedAssets,
+  cacheControlMiddleware,
+  rateLimit,
+  logEvent,
+} from './middleware.js';
 
 const app = express();
 const port = Number(process.env.PORT || 3000);
@@ -36,15 +44,19 @@ const pool = dbConfigured ? mysql.createPool({
 app.disable('x-powered-by');
 app.set('trust proxy', 1);
 app.use(express.json({ limit: '64kb', type: 'application/json' }));
-app.use((_req, res, next) => {
-  res.setHeader('X-Content-Type-Options', 'nosniff');
-  res.setHeader('X-Frame-Options', 'DENY');
-  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
-  res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
-  res.setHeader('Cross-Origin-Opener-Policy', 'same-origin');
-  if (isProduction) res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
-  next();
-});
+
+// Security headers + CSP
+app.use(securityHeadersMiddleware);
+
+// Compression (skips small/streaming responses automatically)
+app.use(compressionMiddleware);
+
+// Public rate limits
+app.use(rateLimit({ windowMs: 60_000, max: 300, name: 'global' }));
+
+// Cache control: 1h default; immutable for hashed Vite assets
+app.use(longCacheForHashedAssets(dist));
+app.use(cacheControlMiddleware);
 
 function normalizeEmail(value) {
   return String(value || '').trim().toLowerCase();
@@ -233,21 +245,63 @@ async function loadDashboardModules() {
 }
 
 app.get('/api/health', async (_req, res) => {
+  const startedAt = process.startupTime || Date.now() - (process.uptime?.() * 1000) || Date.now();
+  const mem = process.memoryUsage();
+  const processInfo = {
+    uptime: Number(process.uptime?.().toFixed(2) ?? 0),
+    memory: {
+      rss: mem.rss,
+      heapUsed: mem.heapUsed,
+      heapTotal: mem.heapTotal,
+      external: mem.external,
+    },
+    node: process.version,
+    pid: process.pid,
+  };
+
   let database = 'not-configured';
-  try {
-    if (pool) {
+  let counts = null;
+  let mysqlLatencyMs = null;
+  if (pool) {
+    const t0 = Date.now();
+    try {
       await pool.query('SELECT 1');
       database = 'ok';
+      mysqlLatencyMs = Date.now() - t0;
+      // Light counts (cached for 30s to avoid load)
+      counts = await getCachedCounts();
+    } catch (error) {
+      database = 'error';
+      logEvent('error', 'health_check_db_error', { error: error.message });
     }
-  } catch {
-    database = 'error';
   }
-  res.status(database === 'error' ? 503 : 200).json({
-    status: database === 'error' ? 'degraded' : 'ok',
+
+  const ok = database === 'ok';
+  res.status(ok ? 200 : 503).json({
+    status: ok ? 'ok' : 'degraded',
     service: 'capoy-final',
+    version: process.env.CAPOY_BUILD_SHA || 'dev',
+    startedAt: new Date(startedAt).toISOString(),
     database,
+    mysqlLatencyMs,
+    counts,
+    process: processInfo,
   });
 });
+
+// Cached row-counts for /api/health (cheap)
+let countsCache = { at: 0, value: null };
+async function getCachedCounts() {
+  const now = Date.now();
+  if (countsCache.value && now - countsCache.at < 30_000) return countsCache.value;
+  const tables = ['reservations', 'tours', 'customers', 'providers', 'fleet', 'reviews', 'cms_settings', 'admin_users', 'app_settings'];
+  const out = {};
+  for (const t of tables) {
+    try { const [r] = await pool.query(`SELECT COUNT(*) AS c FROM ${t}`); out[t] = Number(r[0].c); } catch { out[t] = null; }
+  }
+  countsCache = { at: now, value: out };
+  return out;
+}
 
 app.post('/api/auth/bootstrap', sameOriginOnly, async (req, res) => {
   if (!pool) return res.status(503).json({ error: 'Servicio temporalmente no disponible.' });
@@ -413,10 +467,47 @@ app.use(async (req, res, next) => {
   }
 });
 
-app.use(express.static(dist, { index: false, maxAge: '1h' }));
-app.use('/uploads', express.static(path.join(process.cwd(), 'uploads'), { maxAge: '1d' }));
-app.get('/{*splat}', (_req, res) => res.sendFile(path.join(dist, 'index.html')));
+// Static SPA assets with proper ETag + cache strategy already handled by
+// longCacheForHashedAssets (immutable) and cacheControlMiddleware (1h default).
+// We override maxAge to '0' on the global handler so the explicit per-route
+// Cache-Control headers from the middleware win.
+app.use(express.static(dist, { index: false, maxAge: 0, etag: true, lastModified: true, immutable: false }));
+app.use(
+  '/uploads',
+  express.static(path.join(process.cwd(), 'uploads'), {
+    maxAge: '1d',
+    etag: true,
+    lastModified: true,
+  }),
+);
+
+// SPA fallback: always serves index.html with `no-cache` so HTML updates
+// always reach the browser, but JS/CSS bundles remain immutable.
+app.get('/{*splat}', (_req, res) => {
+  res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+  res.setHeader('Pragma', 'no-cache');
+  res.sendFile(path.join(dist, 'index.html'));
+});
+
+// Set build SHA for /api/health
+if (process.env.CAPOY_BUILD_SHA === undefined && pool) {
+  try {
+    process.env.CAPOY_BUILD_SHA = require('fs').readFileSync(
+      path.join(process.cwd(), '..', 'git_sha'),
+      'utf8',
+    ).trim();
+  } catch { process.env.CAPOY_BUILD_SHA = 'unknown'; }
+}
 
 app.listen(port, '0.0.0.0', () => {
-  console.log(`Capoy listening on ${port}`);
+  logEvent('info', 'server_started', {
+    port,
+    env: process.env.NODE_ENV || 'development',
+    version: process.env.CAPOY_BUILD_SHA || 'unknown',
+    pid: process.pid,
+    compression: true,
+    securityHeaders: true,
+    cacheStrategy: 'immutable-hashed + no-cache-html + 1d-uploads',
+    rateLimit: 'global 300/min',
+  });
 });
