@@ -1,4 +1,29 @@
 import { registerCustomerRoutes } from './customers.js';
+import multer from 'multer';
+import path from 'path';
+import fs from 'fs';
+
+const UPLOAD_DIR = path.join(process.cwd(), 'uploads', 'tours');
+if (!fs.existsSync(UPLOAD_DIR)) fs.mkdirSync(UPLOAD_DIR, { recursive: true });
+
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => cb(null, UPLOAD_DIR),
+  filename: (req, file, cb) => {
+    const ext = path.extname(file.originalname).toLowerCase();
+    const safeName = `tour-${Date.now()}-${Math.random().toString(36).slice(2,8)}${ext}`;
+    cb(null, safeName);
+  }
+});
+
+const upload = multer({
+  storage,
+  limits: { fileSize: 5 * 1024 * 1024 },
+  fileFilter: (req, file, cb) => {
+    const allowed = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
+    if (allowed.includes(file.mimetype)) cb(null, true);
+    else cb(new Error('Solo se permiten imágenes (JPEG, PNG, WebP, GIF).'));
+  }
+});
 
 const TOUR_STATUSES = new Set(['draft', 'published', 'inactive']);
 
@@ -193,6 +218,27 @@ export function registerTourRoutes({ app, pool, requireSession, sameOriginOnly, 
       if (error?.code === 'ER_DUP_ENTRY') return res.status(409).json({ error: 'Ya existe un tour con ese slug.' });
       console.error('tour_update_failed', error.message);
       res.status(503).json({ error: 'No fue posible actualizar el tour.' });
+    }
+  });
+
+  app.post('/api/admin/tours/:id/image', sameOriginOnly, requireSession, upload.single('image'), async (req, res) => {
+    const id = Number.parseInt(req.params.id, 10);
+    if (!Number.isInteger(id) || id < 1) return res.status(400).json({ error: 'Tour inválido.' });
+    if (!req.file) return res.status(400).json({ error: 'No se recibió ningún archivo.' });
+    try {
+      const [rows] = await pool.execute('SELECT id FROM tours WHERE id = ? LIMIT 1', [id]);
+      if (!rows.length) {
+        fs.unlinkSync(req.file.path);
+        return res.status(404).json({ error: 'Tour no encontrado.' });
+      }
+      const imageUrl = `/uploads/tours/${req.file.filename}`;
+      await pool.execute('UPDATE tours SET main_image_url = ?, updated_by_admin_id = ? WHERE id = ?', [imageUrl, req.admin.id, id]);
+      await audit(req, 'tour_image_updated', { userId: req.admin.id, email: req.admin.email, metadata: { tourId: id, filename: req.file.filename } });
+      res.json({ ok: true, imageUrl, filename: req.file.filename });
+    } catch (error) {
+      if (req.file && fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
+      console.error('tour_image_upload_failed', error.message);
+      res.status(503).json({ error: 'No fue posible subir la imagen.' });
     }
   });
 }

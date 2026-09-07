@@ -414,6 +414,7 @@ app.use(async (req, res, next) => {
 });
 
 app.use(express.static(dist, { index: false, maxAge: '1h' }));
+app.use('/uploads', express.static(path.join(process.cwd(), 'uploads'), { maxAge: '1d' }));
 app.get('/{*splat}', (_req, res) => res.sendFile(path.join(dist, 'index.html')));
 
 app.listen(port, '0.0.0.0', () => {
