@@ -8,6 +8,7 @@ ENV CAPOY_BUILD_SHA=${CAPOY_BUILD_SHA}
 RUN npm run build
 
 FROM node:20-bookworm-slim AS runner
+ARG CAPOY_BUILD_SHA=unknown
 WORKDIR /app
 ENV NODE_ENV=production
 ENV CAPOY_BUILD_SHA=${CAPOY_BUILD_SHA}
