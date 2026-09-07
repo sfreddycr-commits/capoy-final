@@ -3,6 +3,7 @@ import express from 'express';
 import mysql from 'mysql2/promise';
 import path from 'node:path';
 import crypto from 'node:crypto';
+import { existsSync, readFileSync } from 'node:fs';
 import { promisify } from 'node:util';
 import { fileURLToPath } from 'node:url';
 import { registerReservationRoutes } from './reservations.js';
@@ -489,14 +490,23 @@ app.get('/{*splat}', (_req, res) => {
   res.sendFile(path.join(dist, 'index.html'));
 });
 
-// Set build SHA for /api/health
-if (process.env.CAPOY_BUILD_SHA === undefined && pool) {
-  try {
-    process.env.CAPOY_BUILD_SHA = require('fs').readFileSync(
-      path.join(process.cwd(), '..', 'git_sha'),
-      'utf8',
-    ).trim();
-  } catch { process.env.CAPOY_BUILD_SHA = 'unknown'; }
+// Set build SHA for /api/health if not provided by the environment.
+if (!process.env.CAPOY_BUILD_SHA) {
+  // Search common locations used by Dokploy, manual builds, and CI.
+  const candidates = [
+    path.join(process.cwd(), 'git_sha'),
+    path.join(process.cwd(), '..', 'git_sha'),
+    '/etc/capoy/git_sha',
+  ];
+  for (const p of candidates) {
+    try {
+      if (existsSync(p)) {
+        process.env.CAPOY_BUILD_SHA = readFileSync(p, 'utf8').trim();
+        break;
+      }
+    } catch { /* ignore */ }
+  }
+  if (!process.env.CAPOY_BUILD_SHA) process.env.CAPOY_BUILD_SHA = 'unknown';
 }
 
 app.listen(port, '0.0.0.0', () => {
