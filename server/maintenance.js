@@ -14,15 +14,15 @@ export function registerMaintenanceRoutes({ app, pool, requireSession }) {
     }
 
     const tables = [
-      ['cms_settings', ['setting_value']],
-      ['app_settings', ['setting_value']],
-      ['tours', ['name', 'destination', 'short_description', 'description', 'duration']],
-      ['customers', ['full_name', 'phone', 'country', 'city', 'notes']],
-      ['providers', ['name', 'contact_name', 'phone', 'address', 'notes']],
-      ['fleet', ['plate', 'brand', 'model', 'capacity_label', 'driver_name', 'driver_phone', 'notes']],
-      ['reviews', ['author_name', 'author_country', 'title', 'body']],
-      ['reservations', ['customer_name', 'notes']],
-      ['admin_users', ['display_name']],
+      ['cms_settings', ['setting_value'], 'setting_key'],
+      ['app_settings', ['setting_value'], 'setting_key'],
+      ['tours', ['name', 'destination', 'short_description', 'description', 'duration'], 'id'],
+      ['customers', ['full_name', 'phone', 'country', 'city', 'notes'], 'id'],
+      ['providers', ['name', 'contact_name', 'phone', 'address', 'notes'], 'id'],
+      ['fleet', ['plate', 'brand', 'model', 'capacity_label', 'driver_name', 'driver_phone', 'notes'], 'id'],
+      ['reviews', ['author_name', 'author_country', 'title', 'body'], 'id'],
+      ['reservations', ['customer_name', 'notes'], 'id'],
+      ['admin_users', ['display_name'], 'id'],
     ];
 
     const fixCol = (val) => {
@@ -37,13 +37,10 @@ export function registerMaintenanceRoutes({ app, pool, requireSession }) {
     };
 
     const report = { fixedRows: 0, errors: [], perTable: {} };
-    for (const [table, cols] of tables) {
+    for (const [table, cols, pkCol] of tables) {
       report.perTable[table] = 0;
       try {
-        const [colsRows] = await pool.query(`SHOW COLUMNS FROM ${table}`);
-        const allCols = colsRows.map(r => r.Field);
-        const idCol = allCols.find(c => c === 'id') || 'id';
-        const selectCols = [idCol, ...cols].filter(c => allCols.includes(c)).join(',');
+        const selectCols = [pkCol, ...cols].join(',');
         const [rows] = await pool.query(`SELECT ${selectCols} FROM ${table}`);
         for (const row of rows) {
           const updates = {};
@@ -55,7 +52,7 @@ export function registerMaintenanceRoutes({ app, pool, requireSession }) {
           }
           if (Object.keys(updates).length) {
             const sets = Object.keys(updates).map(k => `\`${k}\` = ?`).join(', ');
-            await pool.query(`UPDATE \`${table}\` SET ${sets} WHERE \`${idCol}\` = ?`, [...Object.values(updates), row[idCol]]);
+            await pool.query(`UPDATE \`${table}\` SET ${sets} WHERE \`${pkCol}\` = ?`, [...Object.values(updates), row[pkCol]]);
             report.fixedRows++;
             report.perTable[table]++;
           }
