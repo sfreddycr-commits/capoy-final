@@ -52,8 +52,14 @@ app.use(securityHeadersMiddleware);
 // Compression (skips small/streaming responses automatically)
 app.use(compressionMiddleware);
 
-// Public rate limits
+// Public rate limits — global 300/min/IP (covers most clients), then
+// tighter limits per-endpoint to defend sensitive areas.
 app.use(rateLimit({ windowMs: 60_000, max: 300, name: 'global' }));
+
+// Tighter limit for auth endpoints (login attempts — we already have an in-memory
+// tracker; this adds a coarse outer guard).
+const sensitiveAuthRateLimiter = rateLimit({ windowMs: 60_000, max: 30, name: 'auth' });
+const sensitiveAdminRateLimiter = rateLimit({ windowMs: 60_000, max: 600, name: 'admin' });
 
 // Cache control defaults are handled per-path by express.static below via setHeaders.
 
@@ -301,6 +307,18 @@ async function getCachedCounts() {
   countsCache = { at: now, value: out };
   return out;
 }
+
+function authOnly(req, res, next) {
+  // Apply only to /api/auth/* — coarser outer guard (login already has fine-grained in-memory limiter)
+  if (req.path.startsWith('/api/auth')) return sensitiveAuthRateLimiter(req, res, next);
+  next();
+}
+function adminOnly(req, res, next) {
+  if (req.path.startsWith('/api/admin')) return sensitiveAdminRateLimiter(req, res, next);
+  next();
+}
+app.use(authOnly);
+app.use(adminOnly);
 
 app.post('/api/auth/bootstrap', sameOriginOnly, async (req, res) => {
   if (!pool) return res.status(503).json({ error: 'Servicio temporalmente no disponible.' });
