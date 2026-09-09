@@ -1,4 +1,5 @@
 import { registerCustomerRoutes } from './customers.js';
+import { registerGalleryRoutes } from './toursGallery.js';
 import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
@@ -88,6 +89,15 @@ function createPayload(body) {
   };
 }
 
+function parseJsonField(value) {
+  if (value === null || value === undefined) return null;
+  if (Array.isArray(value)) return value;
+  if (typeof value === 'string') {
+    try { const parsed = JSON.parse(value); if (Array.isArray(parsed)) return parsed; } catch { /* ignore */ }
+  }
+  return null;
+}
+
 function mapPublicTour(row) {
   return {
     id: Number(row.id),
@@ -101,6 +111,7 @@ function mapPublicTour(row) {
     currency: row.currency,
     capacity: row.capacity === null ? null : Number(row.capacity),
     mainImageUrl: row.main_image_url,
+    galleryImages: parseJsonField(row.gallery_watermarked) || [],
     publishedAt: row.published_at,
   };
 }
@@ -192,6 +203,37 @@ export function registerTourRoutes({ app, pool, requireSession, sameOriginOnly, 
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [payload.slug, payload.name, payload.destination, payload.shortDescription, payload.description, payload.duration, payload.adultPrice, payload.childPrice, payload.currency, payload.capacity, payload.mainImageUrl, payload.status, publishedAt, req.admin.id, req.admin.id]);
       await audit(req, 'tour_created', { userId: req.admin.id, email: req.admin.email, metadata: { tourId: result.insertId, slug: payload.slug } });
+
+      // Persist gallery if provided in the create payload
+      const incomingGallery = Array.isArray(req.body?.gallery_images) ? req.body.gallery_images.filter(u => typeof u === 'string' && /^https?:\/\//i.test(u)).slice(0, 12) : [];
+      if (incomingGallery.length) {
+        // Process: download + watermark if not already a local URL
+        const finalUrls = [];
+        for (const u of incomingGallery) {
+          if (u.startsWith('/uploads/')) { finalUrls.push(u); continue; }
+          try {
+            const r = await fetch(u);
+            if (!r.ok) continue;
+            const buf = Buffer.from(await r.arrayBuffer());
+            const { applyWatermark } = await import('./toursGallery.js');
+            const wmBuf = await applyWatermark(buf);
+            const { default: cryptoMod } = await import('node:crypto');
+            const { default: pathMod } = await import('node:path');
+            const { default: fsMod } = await import('node:fs');
+            const fname = `${cryptoMod.randomBytes(8).toString('hex')}-wm.jpg`;
+            const galleryDir = pathMod.join(process.cwd(), 'uploads', 'tours', 'gallery');
+            fsMod.mkdirSync(galleryDir, { recursive: true });
+            await fsMod.promises.writeFile(pathMod.join(galleryDir, fname), wmBuf);
+            finalUrls.push(`/uploads/tours/gallery/${fname}`);
+          } catch (err) {
+            console.error('gallery_process_failed', u, err.message);
+          }
+        }
+        if (finalUrls.length) {
+          await pool.query('UPDATE tours SET gallery_watermarked = CAST(? AS JSON) WHERE id = ?', [JSON.stringify(finalUrls), result.insertId]);
+        }
+      }
+
       res.status(201).json({ ok: true, tour: { id: Number(result.insertId), slug: payload.slug } });
     } catch (error) {
       if (error?.code === 'ER_DUP_ENTRY') return res.status(409).json({ error: 'Ya existe un tour con ese slug.' });
@@ -213,6 +255,12 @@ export function registerTourRoutes({ app, pool, requireSession, sameOriginOnly, 
       await pool.execute(`UPDATE tours SET slug=?, name=?, destination=?, short_description=?, description=?, duration=?, adult_price=?, child_price=?, currency=?, capacity=?, main_image_url=?, status=?, published_at=?, updated_by_admin_id=? WHERE id=?`,
         [payload.slug, payload.name, payload.destination, payload.shortDescription, payload.description, payload.duration, payload.adultPrice, payload.childPrice, payload.currency, payload.capacity, payload.mainImageUrl, payload.status, publishedAt, req.admin.id, id]);
       await audit(req, 'tour_updated', { userId: req.admin.id, email: req.admin.email, metadata: { tourId: id, status: payload.status } });
+
+      // Persist gallery if provided in the PATCH payload
+      if (Array.isArray(req.body?.gallery_images)) {
+        const gallery = req.body.gallery_images.filter(u => typeof u === 'string' && /^https?:\/\//i.test(u)).slice(0, 12);
+        await pool.query('UPDATE tours SET gallery_watermarked = CAST(? AS JSON) WHERE id = ?', [JSON.stringify(gallery), id]);
+      }
       res.json({ ok: true });
     } catch (error) {
       if (error?.code === 'ER_DUP_ENTRY') return res.status(409).json({ error: 'Ya existe un tour con ese slug.' });
@@ -241,4 +289,7 @@ export function registerTourRoutes({ app, pool, requireSession, sameOriginOnly, 
       res.status(503).json({ error: 'No fue posible subir la imagen.' });
     }
   });
+
+  // Gallery + watermark routes (owner-only)
+  registerGalleryRoutes({ app, pool, requireSession, sameOriginOnly, audit, requireOwner });
 }

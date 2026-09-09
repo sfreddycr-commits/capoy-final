@@ -12,6 +12,7 @@ type PublicTour = {
   currency: string;
   capacity: number | null;
   mainImageUrl: string | null;
+  galleryImages?: string[];
   publishedAt: string | null;
 };
 
@@ -83,6 +84,23 @@ function buildTourCard(tour: PublicTour) {
   details.href = `#contacto`;
   details.dataset.tourSlug = tour.slug;
   body.appendChild(details);
+
+  // Gallery thumbnails (up to 6) — each has the Capoy Costa Rica watermark baked in server-side.
+  if (Array.isArray(tour.galleryImages) && tour.galleryImages.length > 0) {
+    const gallery = document.createElement('div');
+    gallery.className = 'tour-gallery';
+    gallery.setAttribute('aria-label', `Galería de ${tour.name}`);
+    for (const url of tour.galleryImages.slice(0, 6)) {
+      const safeUrl = safeImage(url);
+      const img = document.createElement('img');
+      img.src = safeUrl;
+      img.alt = `${tour.name} — foto de la aventura`;
+      img.loading = 'lazy';
+      img.className = 'tour-gallery-thumb';
+      gallery.appendChild(img);
+    }
+    body.appendChild(gallery);
+  }
 
   article.appendChild(image);
   article.appendChild(body);
