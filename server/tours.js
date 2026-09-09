@@ -126,7 +126,7 @@ export function registerTourRoutes({ app, pool, requireSession, sameOriginOnly, 
 
   app.get('/api/public/tours', async (_req, res) => {
     try {
-      const [rows] = await pool.query(`SELECT id, slug, name, destination, short_description, duration, adult_price, child_price, currency, capacity, main_image_url, published_at
+      const [rows] = await pool.query(`SELECT id, slug, name, destination, short_description, duration, adult_price, child_price, currency, capacity, main_image_url, published_at, gallery_watermarked
         FROM tours
         WHERE status = 'published'
         ORDER BY COALESCE(published_at, created_at) DESC, id DESC`);
