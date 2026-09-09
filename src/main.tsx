@@ -12,6 +12,7 @@ import { CmsPage } from './CmsPage';
 import { UsersPage } from './UsersPage';
 import { SettingsPage } from './SettingsPage';
 import { CompanySettingsPage } from './CompanySettingsPage';
+import { TwoFactorPage } from './TwoFactorPage';
 import { AuditPage } from './AuditPage';
 import { PublicCmsBridge } from './PublicCmsBridge';
 import { PublicToursBridge } from './PublicToursBridge';
@@ -41,8 +42,9 @@ const isUsers = pathname === '/admin/usuarios';
 const isSettings = pathname === '/admin/configuracion';
 const isAudit = pathname === '/admin/auditoria';
 const isCompany = pathname === '/admin/empresa';
+const isTwoFactor = pathname === '/admin/seguridad';
 const isAdminDashboard = pathname === '/admin' || (pathname.startsWith('/admin/') && pathname !== '/admin/login');
 
 const publicScreen = <><App/><PublicCmsBridge/><PublicToursBridge/><PublicCompanyBridge/></>;
-const screen = isReservations ? <ReservationsPage/> : isTours ? <ToursPage/> : isCustomers ? <CustomersPage/> : isProviders ? <ProvidersPage/> : isFleet ? <FleetPage/> : isReviews ? <ReviewsPage/> : isCms ? <CmsPage/> : isUsers ? <UsersPage/> : isSettings ? <SettingsPage/> : isAudit ? <AuditPage/> : isCompany ? <CompanySettingsPage/> : isAdminDashboard ? <AdminDashboard/> : publicScreen;
+const screen = isReservations ? <ReservationsPage/> : isTours ? <ToursPage/> : isCustomers ? <CustomersPage/> : isProviders ? <ProvidersPage/> : isFleet ? <FleetPage/> : isReviews ? <ReviewsPage/> : isCms ? <CmsPage/> : isUsers ? <UsersPage/> : isSettings ? <SettingsPage/> : isAudit ? <AuditPage/> : isCompany ? <CompanySettingsPage/> : isTwoFactor ? <TwoFactorPage/> : isAdminDashboard ? <AdminDashboard/> : publicScreen;
 ReactDOM.createRoot(document.getElementById('root')!).render(<React.StrictMode>{screen}</React.StrictMode>);

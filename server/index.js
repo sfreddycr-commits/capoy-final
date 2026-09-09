@@ -364,6 +364,8 @@ app.post('/api/auth/login', sameOriginOnly, async (req, res) => {
   const email = normalizeEmail(req.body?.email);
   const password = req.body?.password;
   const remember = req.body?.remember === true;
+  const twoFactorCode = String(req.body?.twoFactorCode || '').trim();
+  const twoFactorRecovery = String(req.body?.twoFactorRecovery || '').trim();
   const genericError = { error: 'Correo o contraseña incorrectos.' };
   if (!validEmail(email) || typeof password !== 'string' || password.length > 200) {
     await audit(req, 'login_failed', { email: validEmail(email) ? email : null });
@@ -376,7 +378,9 @@ app.post('/api/auth/login', sameOriginOnly, async (req, res) => {
   }
   try {
     const [rows] = await pool.execute(
-      'SELECT id, email, display_name, password_hash, role, status, failed_attempts, locked_until FROM admin_users WHERE email = ? LIMIT 1',
+      `SELECT id, email, display_name, password_hash, role, status, failed_attempts, locked_until,
+              totp_enabled, totp_secret_encrypted, totp_recovery_codes_encrypted, totp_last_used_step
+       FROM admin_users WHERE email = ? LIMIT 1`,
       [email],
     );
     const user = rows[0];
@@ -393,6 +397,42 @@ app.post('/api/auth/login', sameOriginOnly, async (req, res) => {
       }
       await audit(req, locked ? 'login_locked' : 'login_failed', { userId: user?.id || null, email });
       return res.status(401).json(genericError);
+    }
+
+    // Two-factor: when enabled, require code or recovery. Return early without creating session if missing/invalid.
+    if (user.totp_enabled) {
+      if (!twoFactorCode && !twoFactorRecovery) {
+        await pool.execute('INSERT INTO admin_two_factor_log (user_id, event_type, ip_address, user_agent) VALUES (?, ?, ?, ?)',
+          [user.id, 'login_step1_missing_code', req.ip || null, String(req.get('user-agent') || '').slice(0, 255) || null]);
+        return res.status(401).json({ error: 'twoFactorRequired', requiresTwoFactor: true });
+      }
+      let ok2fa = false;
+      let stepAdvanced = null;
+      if (twoFactorCode) {
+        const secret = decryptSecret(user.totp_secret_encrypted);
+        const result = verifyAndAdvance(secret, twoFactorCode, user.totp_last_used_step ? Number(user.totp_last_used_step) : null);
+        if (result.ok) {
+          ok2fa = true;
+          stepAdvanced = result.step;
+        }
+      } else if (twoFactorRecovery) {
+        const consumed = consumeRecoveryCode(user.totp_recovery_codes_encrypted, twoFactorRecovery);
+        if (consumed && consumed.consumed) {
+          ok2fa = true;
+          await pool.query('UPDATE admin_users SET totp_recovery_codes_encrypted = ? WHERE id = ?', [consumed.remainingBlob, user.id]);
+        }
+      }
+      if (!ok2fa) {
+        await pool.execute('INSERT INTO admin_two_factor_log (user_id, event_type, ip_address, user_agent) VALUES (?, ?, ?, ?)',
+          [user.id, 'login_failed_code', req.ip || null, String(req.get('user-agent') || '').slice(0, 255) || null]);
+        await audit(req, 'login_failed', { userId: user.id, email, metadata: { stage: 'two_factor' } });
+        return res.status(401).json({ error: 'Código de verificación incorrecto.' });
+      }
+      await pool.execute('INSERT INTO admin_two_factor_log (user_id, event_type, ip_address, user_agent) VALUES (?, ?, ?, ?)',
+        [user.id, 'login_succeeded', req.ip || null, String(req.get('user-agent') || '').slice(0, 255) || null]);
+      if (stepAdvanced !== null) {
+        await pool.query('UPDATE admin_users SET totp_last_used_step = ? WHERE id = ?', [stepAdvanced, user.id]);
+      }
     }
 
     const maxAgeMs = remember ? REMEMBER_SESSION_MS : SHORT_SESSION_MS;

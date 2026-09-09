@@ -13,16 +13,17 @@
     "prebuild": "node scripts/write-git-sha.mjs"
   },
   "dependencies": {
+    "@types/multer": "^2.0.0",
     "@vitejs/plugin-react": "latest",
     "dotenv": "latest",
     "express": "latest",
     "lucide-react": "latest",
     "multer": "^2.0.0",
     "mysql2": "latest",
+    "otplib": "^12.0.1",
     "react": "latest",
     "react-dom": "latest",
     "typescript": "latest",
-    "vite": "latest",
-    "@types/multer": "^2.0.0"
+    "vite": "latest"
   }
 }

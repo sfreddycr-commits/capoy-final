@@ -2,6 +2,7 @@ import crypto from 'node:crypto';
 import { promisify } from 'node:util';
 import { registerSettingsRoutes } from './settings.js';
 import { registerCompanyLogoRoutes } from './companyLogo.js';
+import { registerTwoFactorRoutes } from './twofactor.js';
 
 const scryptAsync = promisify(crypto.scrypt);
 const USER_ROLES = new Set(['owner','admin']);
@@ -18,6 +19,7 @@ function mapUser(row){return{id:Number(row.id),email:row.email,displayName:row.d
 export function registerUserRoutes({app,pool,requireSession,sameOriginOnly,audit}){
   registerSettingsRoutes({app,pool,requireSession,sameOriginOnly,audit});
   registerCompanyLogoRoutes({app,pool,requireSession,sameOriginOnly,audit});
+  registerTwoFactorRoutes({app,pool,requireSession,sameOriginOnly,audit,requireOwner});
   app.get('/api/admin/users',requireSession,requireOwner,async(_req,res)=>{
     try{
       const [rows]=await pool.query(`SELECT u.id,u.email,u.display_name,u.role,u.status,u.last_login_at,u.password_changed_at,u.created_at,u.updated_at,
