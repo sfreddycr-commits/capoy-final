@@ -8,9 +8,16 @@ import path from 'node:path';
 import fs from 'node:fs';
 import crypto from 'node:crypto';
 import sharp from 'sharp';
+import multer from 'multer';
 
 const GALLERY_DIR = path.join(process.cwd(), 'uploads', 'tours', 'gallery');
 fs.mkdirSync(GALLERY_DIR, { recursive: true });
+
+// Memory storage: we read the buffer, apply the watermark, then persist.
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 8 * 1024 * 1024 },
+});
 
 const WATERMARK_TEXT = 'Capoy Costa Rica';
 
@@ -78,54 +85,53 @@ export function registerGalleryRoutes({ app, pool, requireSession, sameOriginOnl
   // Done in server/tours.js mapPublicTour
 
   // --- Admin: upload one or more image files for a tour (with watermark) ---
-  app.post('/api/admin/tours/:id/gallery/upload', sameOriginOnly, requireSession, requireOwner, async (req, res) => {
+  app.post('/api/admin/tours/:id/gallery/upload', sameOriginOnly, requireSession, requireOwner, upload.array('images', 10), async (req, res) => {
     const id = Number.parseInt(req.params.id, 10);
     if (!Number.isInteger(id) || id < 1) return res.status(400).json({ error: 'Tour inválido.' });
-    if (!req.file) return res.status(400).json({ error: 'No se recibió ningún archivo.' });
+    const files = req.files;
+    if (!Array.isArray(files) || files.length === 0) return res.status(400).json({ error: 'No se recibió ningún archivo.' });
 
     const [trows] = await pool.query('SELECT id FROM tours WHERE id = ? LIMIT 1', [id]);
-    if (!trows.length) {
-      fs.unlinkSync(req.file.path);
-      return res.status(404).json({ error: 'Tour no encontrado.' });
+    if (!trows.length) return res.status(404).json({ error: 'Tour no encontrado.' });
+
+    const accepted = [];
+    for (const file of files) {
+      try {
+        const wmBuffer = await applyWatermark(file.buffer);
+        const ext = (file.originalname.match(/\.([a-zA-Z0-9]+)$/) || [])[1]?.toLowerCase() || 'jpg';
+        const wmFilename = `${crypto.randomBytes(8).toString('hex')}-${Date.now().toString(36)}.${ext === 'png' ? 'jpg' : ext}`;
+        const wmPath = path.join(GALLERY_DIR, wmFilename);
+        await fs.promises.writeFile(wmPath, wmBuffer);
+        accepted.push(`/uploads/tours/gallery/${wmFilename}`);
+      } catch (err) {
+        console.error('gallery_watermark_failed', err.message);
+      }
     }
-
-    let watermarkedBuffer;
-    try {
-      const src = await fs.promises.readFile(req.file.path);
-      watermarkedBuffer = await applyWatermark(src);
-    } catch (err) {
-      fs.unlinkSync(req.file.path);
-      return res.status(400).json({ error: `No se pudo procesar la imagen: ${err.message}` });
-    }
-
-    const wmFilename = `${crypto.randomBytes(8).toString('hex')}-${req.file.filename.replace(/\.[^.]+$/, '')}.jpg`;
-    const wmPath = path.join(GALLERY_DIR, wmFilename);
-    await fs.promises.writeFile(wmPath, watermarkedBuffer);
-    fs.unlinkSync(req.file.path);
-
-    const publicUrl = `/uploads/tours/gallery/${wmFilename}`;
+    if (!accepted.length) return res.status(400).json({ error: 'No se pudo procesar ninguna imagen.' });
 
     const [cur] = await pool.query('SELECT gallery_images, gallery_watermarked FROM tours WHERE id = ? LIMIT 1', [id]);
     let arr = cur[0]?.gallery_watermarked;
     try { arr = typeof arr === 'string' ? JSON.parse(arr) : arr; } catch { arr = null; }
     if (!Array.isArray(arr)) arr = [];
-    arr.push(publicUrl);
+    arr.push(...accepted);
     if (arr.length > 12) arr = arr.slice(-12);
 
-    // Track the original URL too for audit
-    const originals = typeof cur[0]?.gallery_images === 'string' ? JSON.parse(cur[0].gallery_images || '[]') : (cur[0]?.gallery_images || []);
-    if (Array.isArray(originals)) originals.push(`/uploads/tours/gallery-originals/${req.file.filename}`);
+    const originals = cur[0]?.gallery_images;
+    let originalsArr = typeof originals === 'string' ? JSON.parse(originals || '[]') : (Array.isArray(originals) ? originals : []);
+    if (!Array.isArray(originalsArr)) originalsArr = [];
+    originalsArr.push(...accepted);
+
     await pool.query(
       'UPDATE tours SET gallery_images = CAST(? AS JSON), gallery_watermarked = CAST(? AS JSON) WHERE id = ?',
-      [JSON.stringify(originals || []), JSON.stringify(arr), id],
+      [JSON.stringify(originalsArr), JSON.stringify(arr), id],
     );
 
     await audit(req, 'tour_gallery_uploaded', {
       userId: req.admin.id, email: req.admin.email,
-      metadata: { tourId: id, filename: wmFilename, totalImages: arr.length },
+      metadata: { tourId: id, uploaded: accepted.length, totalImages: arr.length },
     });
 
-    res.json({ ok: true, url: publicUrl, total: arr.length, gallery: arr });
+    res.json({ ok: true, urls: accepted, total: arr.length, gallery: arr });
   });
 
   // --- Admin: replace full gallery with explicit URLs. If the URL is external (not /uploads/),
@@ -173,6 +179,91 @@ export function registerGalleryRoutes({ app, pool, requireSession, sameOriginOnl
       metadata: { tourId: id, totalImages: finalUrls.length },
     });
     res.json({ ok: true, gallery: finalUrls });
+  });
+
+  // --- Admin: list gallery for a tour ---
+  app.get('/api/admin/tours/:id/gallery', requireSession, async (req, res) => {
+    const id = Number.parseInt(req.params.id, 10);
+    if (!Number.isInteger(id) || id < 1) return res.status(400).json({ error: 'Tour inválido.' });
+    try {
+      const [trows] = await pool.query('SELECT gallery_watermarked FROM tours WHERE id = ? LIMIT 1', [id]);
+      if (!trows.length) return res.status(404).json({ error: 'Tour no encontrado.' });
+      let arr = trows[0]?.gallery_watermarked;
+      try { arr = typeof arr === 'string' ? JSON.parse(arr) : arr; } catch { arr = []; }
+      res.json({ ok: true, gallery: Array.isArray(arr) ? arr : [] });
+    } catch (error) {
+      console.error('tour_gallery_list_failed', error.message);
+      res.status(503).json({ error: 'No fue posible cargar la galería.' });
+    }
+  });
+
+  // --- Admin: replace a single gallery slot by index (upload file) ---
+  // PUT /api/admin/tours/:id/gallery/:idx  — multipart field 'image'
+  // If idx == current length, appends.
+  app.put('/api/admin/tours/:id/gallery/:idx', sameOriginOnly, requireSession, requireOwner, upload.single('image'), async (req, res) => {
+    const id = Number.parseInt(req.params.id, 10);
+    const idx = Number.parseInt(req.params.idx, 10);
+    if (!Number.isInteger(id) || id < 1 || !Number.isInteger(idx) || idx < 0 || idx > 11) {
+      return res.status(400).json({ error: 'Tour o índice inválido.' });
+    }
+    if (!req.file) return res.status(400).json({ error: 'No se recibió ningún archivo.' });
+    try {
+      const [trows] = await pool.query('SELECT id FROM tours WHERE id = ? LIMIT 1', [id]);
+      if (!trows.length) return res.status(404).json({ error: 'Tour no encontrado.' });
+
+      let watermarkedBuffer;
+      try {
+        watermarkedBuffer = await applyWatermark(req.file.buffer);
+      } catch (err) {
+        return res.status(400).json({ error: `No se pudo procesar la imagen: ${err.message}` });
+      }
+      const ext = (req.file.originalname.match(/\.([a-zA-Z0-9]+)$/) || [])[1]?.toLowerCase() || 'jpg';
+      const wmFilename = `${crypto.randomBytes(8).toString('hex')}-${Date.now().toString(36)}.${ext === 'png' ? 'jpg' : ext}`;
+      const wmPath = path.join(GALLERY_DIR, wmFilename);
+      await fs.promises.writeFile(wmPath, watermarkedBuffer);
+      const publicUrl = `/uploads/tours/gallery/${wmFilename}`;
+
+      const [cur] = await pool.query('SELECT gallery_images, gallery_watermarked FROM tours WHERE id = ? LIMIT 1', [id]);
+      let arr = cur[0]?.gallery_watermarked;
+      try { arr = typeof arr === 'string' ? JSON.parse(arr) : arr; } catch { arr = null; }
+      if (!Array.isArray(arr)) arr = [];
+
+      let previous = null;
+      if (idx < arr.length) {
+        previous = arr[idx];
+        arr[idx] = publicUrl;
+      } else {
+        while (arr.length < idx) arr.push(null);
+        arr.push(publicUrl);
+      }
+
+      // Keep symmetric original list
+      let oarr = cur[0]?.gallery_images;
+      try { oarr = typeof oarr === 'string' ? JSON.parse(oarr || '[]') : (Array.isArray(oarr) ? oarr : []); } catch { oarr = []; }
+      if (!Array.isArray(oarr)) oarr = [];
+      while (oarr.length < idx) oarr.push(null);
+      if (idx < oarr.length) oarr[idx] = publicUrl; else oarr.push(publicUrl);
+
+      await pool.query(
+        'UPDATE tours SET gallery_images = CAST(? AS JSON), gallery_watermarked = CAST(? AS JSON) WHERE id = ?',
+        [JSON.stringify(oarr), JSON.stringify(arr), id],
+      );
+
+      // Cleanup replaced file (best effort)
+      if (previous && previous.startsWith('/uploads/tours/gallery/')) {
+        fs.promises.unlink(path.join(GALLERY_DIR, path.basename(previous))).catch(() => {});
+      }
+
+      await audit(req, 'tour_gallery_slot_updated', {
+        userId: req.admin.id, email: req.admin.email,
+        metadata: { tourId: id, index: idx, filename: wmFilename },
+      });
+
+      res.json({ ok: true, url: publicUrl, gallery: arr });
+    } catch (error) {
+      console.error('tour_gallery_slot_failed', error.message);
+      res.status(503).json({ error: 'No fue posible actualizar la foto.' });
+    }
   });
 
   // --- Admin: delete a single gallery image by index ---

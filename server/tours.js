@@ -126,6 +126,7 @@ export function registerTourRoutes({ app, pool, requireSession, sameOriginOnly, 
 
   app.get('/api/public/tours', async (_req, res) => {
     try {
+      res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
       const [rows] = await pool.query(`SELECT id, slug, name, destination, short_description, duration, adult_price, child_price, currency, capacity, main_image_url, published_at, gallery_watermarked
         FROM tours
         WHERE status = 'published'
@@ -164,7 +165,7 @@ export function registerTourRoutes({ app, pool, requireSession, sameOriginOnly, 
           SUM(status = 'inactive') AS inactiveCount
           FROM tours`),
         pool.execute(`SELECT COUNT(*) AS total FROM tours ${clause}`, params),
-        pool.execute(`SELECT id, slug, name, destination, short_description, description, duration, adult_price, child_price, currency, capacity, main_image_url, status, published_at, created_at, updated_at
+        pool.execute(`SELECT id, slug, name, destination, short_description, description, duration, adult_price, child_price, currency, capacity, main_image_url, status, published_at, created_at, updated_at, gallery_watermarked
           FROM tours ${clause} ORDER BY created_at DESC LIMIT ? OFFSET ?`, [...params, limit, offset]),
       ]);
       const summary = summaryRows[0] || {};
@@ -179,6 +180,7 @@ export function registerTourRoutes({ app, pool, requireSession, sameOriginOnly, 
           adultPrice: Number(row.adult_price), childPrice: row.child_price === null ? null : Number(row.child_price),
           currency: row.currency, capacity: row.capacity === null ? null : Number(row.capacity), mainImageUrl: row.main_image_url,
           status: row.status, publishedAt: row.published_at, createdAt: row.created_at, updatedAt: row.updated_at,
+          galleryImages: parseJsonField(row.gallery_watermarked) || [],
         })),
       });
     } catch (error) {
