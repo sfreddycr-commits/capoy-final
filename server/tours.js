@@ -121,7 +121,7 @@ function mapPublicTour(row) {
   };
 }
 
-export function registerTourRoutes({ app, pool, requireSession, sameOriginOnly, audit, requireOwner }) {
+export function registerTourRoutes({ app, pool, requireSession, sameOriginOnly, audit }) {
   registerCustomerRoutes({ app, pool, requireSession, sameOriginOnly, audit });
 
   app.get('/api/public/tours', async (_req, res) => {
