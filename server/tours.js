@@ -1,5 +1,10 @@
 import { registerCustomerRoutes } from './customers.js';
 import { registerGalleryRoutes } from './toursGallery.js';
+
+function requireOwner(req, res, next) {
+  if (req.admin?.role !== 'owner') return res.status(403).json({ error: 'Se requiere rol propietario.' });
+  next();
+}
 import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
@@ -116,7 +121,7 @@ function mapPublicTour(row) {
   };
 }
 
-export function registerTourRoutes({ app, pool, requireSession, sameOriginOnly, audit }) {
+export function registerTourRoutes({ app, pool, requireSession, sameOriginOnly, audit, requireOwner }) {
   registerCustomerRoutes({ app, pool, requireSession, sameOriginOnly, audit });
 
   app.get('/api/public/tours', async (_req, res) => {
