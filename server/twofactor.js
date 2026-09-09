@@ -5,7 +5,8 @@
 // - All TOTP events logged to admin_two_factor_log and audited via the global audit() helper.
 
 import crypto from 'node:crypto';
-import { TOTP, Secret } from 'otplib';
+import otplib from 'otplib';
+const { TOTP, Secret } = otplib;
 
 const RECOVERY_COUNT = 10;
 const ISSUER = 'Capoy Tours';
