@@ -5,8 +5,7 @@
 // - All TOTP events logged to admin_two_factor_log and audited via the global audit() helper.
 
 import crypto from 'node:crypto';
-import otplib from 'otplib';
-const { TOTP, Secret } = otplib;
+import { TOTP, generateSecret, generateURI } from 'otplib';
 
 const RECOVERY_COUNT = 10;
 const ISSUER = 'Capoy Tours';
@@ -85,11 +84,14 @@ const totp = new TOTP({
 
 export function generateSecretBase32() {
   // 20 bytes (160 bits) is the standard for TOTP secrets.
-  return Secret.generate({ length: 20 });
+  // otplib v12: returns a base32 string when called directly.
+  const s = generateSecret({ length: 20 });
+  return typeof s === 'string' ? s : s.secret;
 }
 
 export function buildOtpAuthUrl(email, secretBase32) {
-  return Secret.otpauthURL({
+  return generateURI({
+    type: 'totp',
     secret: secretBase32,
     label: encodeURIComponent(email),
     issuer: ISSUER,
@@ -99,24 +101,17 @@ export function buildOtpAuthUrl(email, secretBase32) {
   });
 }
 
-export function verifyTotp(secretBase32, token, lastUsedStep = null) {
-  const clean = String(token || '').replace(/\s+/g, '');
-  if (!/^\d{6}$/.test(clean)) return { ok: false };
-  const result = totp.verify({ token: clean, secret: secretBase32 });
-  // Replay protection: track step number.
-  if (result && lastUsedStep !== null) {
-    const step = Math.floor(Date.now() / 1000 / 30);
-    if (step <= lastUsedStep) return { ok: false, reason: 'replay' };
-    return { ok: true, step };
-  }
-  return { ok: !!result };
-}
-
-export function verifyAndAdvance(secretBase32, token, lastUsedStep) {
+export async function verifyAndAdvance(secretBase32, token, lastUsedStep) {
   const clean = String(token || '').replace(/\s+/g, '');
   if (!/^\d{6}$/.test(clean)) return { ok: false, reason: 'format' };
-  const delta = totp.check(clean, secretBase32);
-  if (delta === null) return { ok: false, reason: 'invalid' };
+  // otplib v12 verify is async; returns a delta (0 = current step) or null.
+  let delta = null;
+  try {
+    delta = await totp.verify({ token: clean, secret: secretBase32 });
+  } catch {
+    return { ok: false, reason: 'invalid' };
+  }
+  if (delta === null || delta === undefined) return { ok: false, reason: 'invalid' };
   const step = Math.floor(Date.now() / 1000 / 30);
   if (lastUsedStep !== null && step <= lastUsedStep) return { ok: false, reason: 'replay' };
   return { ok: true, step };
@@ -169,8 +164,7 @@ export function registerTwoFactorRoutes({ app, pool, requireSession, sameOriginO
     if (!rows.length) return res.status(404).json({ error: 'Usuario no encontrado.' });
     const secret = decryptSecret(rows[0].totp_secret_encrypted);
     if (!secret) return res.status(400).json({ error: 'No hay un enrolamiento pendiente.' });
-
-    const result = verifyAndAdvance(secret, code, null);
+    const result = await verifyAndAdvance(secret, code, null);
     if (!result.ok) {
       await audit(req, 'two_factor_enroll_confirm_failed', { userId, email: req.admin.email });
       return res.status(400).json({ error: 'Código incorrecto. Verifica que la hora de tu dispositivo sea la correcta.' });

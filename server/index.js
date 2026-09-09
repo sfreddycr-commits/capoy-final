@@ -7,6 +7,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { promisify } from 'node:util';
 import { fileURLToPath } from 'node:url';
 import { registerReservationRoutes } from './reservations.js';
+import { verifyAndAdvance as verifyTwoFactor, decryptSecret as decryptTotpSecret } from './twofactor.js';
 import {
   compressionMiddleware,
   securityHeadersMiddleware,
@@ -409,8 +410,8 @@ app.post('/api/auth/login', sameOriginOnly, async (req, res) => {
       let ok2fa = false;
       let stepAdvanced = null;
       if (twoFactorCode) {
-        const secret = decryptSecret(user.totp_secret_encrypted);
-        const result = verifyAndAdvance(secret, twoFactorCode, user.totp_last_used_step ? Number(user.totp_last_used_step) : null);
+        const secret = decryptTotpSecret(user.totp_secret_encrypted);
+        const result = await verifyTwoFactor(secret, twoFactorCode, user.totp_last_used_step ? Number(user.totp_last_used_step) : null);
         if (result.ok) {
           ok2fa = true;
           stepAdvanced = result.step;
