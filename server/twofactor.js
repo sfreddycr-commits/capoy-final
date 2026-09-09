@@ -5,7 +5,79 @@
 // - All TOTP events logged to admin_two_factor_log and audited via the global audit() helper.
 
 import crypto from 'node:crypto';
-import { TOTP, generateSecret, generateURI } from 'otplib';
+
+// RFC 6238 TOTP implementation (HMAC-SHA1, 30s period, 6 digits).
+// Self-contained — avoids dependency on otplib (which has ESM/CJS interop
+// issues across Node 20/22). ~40 lines that match the standard exactly.
+const TOTP_PERIOD = 30;
+const TOTP_DIGITS = 6;
+const TOTP_WINDOW = 1; // ±1 step tolerance
+
+function totpGenerateSecret(bytes = 20) {
+  const buf = crypto.randomBytes(bytes);
+  // Base32 RFC 4648 (alphabet A-Z 2-7, with padding)
+  const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
+  let bits = '';
+  for (const b of buf) bits += b.toString(2).padStart(8, '0');
+  let out = '';
+  for (let i = 0; i + 5 <= bits.length; i += 5) {
+    out += alphabet[parseInt(bits.substring(i, i + 5), 2)];
+  }
+  // RFC 6238 / 4226 require padding to multiple of 8 chars.
+  while (out.length % 8 !== 0) out += '=';
+  return out;
+}
+
+function totpGenerate(secretBase32, timestamp = Date.now()) {
+  // Decode base32
+  const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
+  const clean = secretBase32.replace(/=+$/g, '').toUpperCase();
+  let bits = '';
+  for (const ch of clean) {
+    const idx = alphabet.indexOf(ch);
+    if (idx < 0) throw new Error('Invalid base32 in TOTP secret');
+    bits += idx.toString(2).padStart(5, '0');
+  }
+  const keyBytes = Buffer.alloc(Math.ceil(bits.length / 8));
+  for (let i = 0; i < bits.length; i += 8) {
+    keyBytes[i / 8] = parseInt(bits.substring(i, Math.min(i + 8, bits.length)), 2);
+  }
+  // Counter = floor(unix_time / period)
+  const counter = Math.floor(timestamp / 1000 / TOTP_PERIOD);
+  const counterBuf = Buffer.alloc(8);
+  // big-endian 64-bit counter
+  let c = counter;
+  for (let i = 7; i >= 0; i--) {
+    counterBuf[i] = c & 0xff;
+    c = Math.floor(c / 256);
+  }
+  const hmac = crypto.createHmac('sha1', keyBytes).update(counterBuf).digest();
+  const offset = hmac[hmac.length - 1] & 0x0f;
+  const binCode = ((hmac[offset] & 0x7f) << 24) | ((hmac[offset + 1] & 0xff) << 16) | ((hmac[offset + 2] & 0xff) << 8) | (hmac[offset + 3] & 0xff);
+  const otp = (binCode % (10 ** TOTP_DIGITS)).toString().padStart(TOTP_DIGITS, '0');
+  return otp;
+}
+
+function totpVerifyAndAdvance(secretBase32, token, lastUsedStep) {
+  const clean = String(token || '').replace(/\s+/g, '');
+  if (!/^\d{6}$/.test(clean)) return { ok: false, reason: 'format' };
+  const step = Math.floor(Date.now() / 1000 / TOTP_PERIOD);
+  for (let delta = -TOTP_WINDOW; delta <= TOTP_WINDOW; delta++) {
+    const testStep = step + delta;
+    if (lastUsedStep !== null && testStep <= lastUsedStep) continue;
+    const expected = totpGenerate(secretBase32, testStep * TOTP_PERIOD * 1000);
+    if (expected === clean) {
+      return { ok: true, step: testStep };
+    }
+  }
+  return { ok: false, reason: 'invalid' };
+}
+
+function totpGenerateUri(secretBase32, email, issuer = 'Capoy Tours') {
+  const label = encodeURIComponent(email);
+  const iss = encodeURIComponent(issuer);
+  return `otpauth://totp/${label}?secret=${secretBase32}&issuer=${iss}&algorithm=SHA1&digits=6&period=30`;
+}
 
 const RECOVERY_COUNT = 10;
 const ISSUER = 'Capoy Tours';
@@ -74,47 +146,18 @@ export function consumeRecoveryCode(storedJsonBlob, attempt) {
   return { consumed: true, remainingBlob: JSON.stringify(hashes) };
 }
 
-// otplib TOTP instance with conservative timing (30s step, ±1 window).
-const totp = new TOTP({
-  algorithm: 'SHA1',
-  digits: 6,
-  period: 30,
-  window: 1,
-});
+// otplib removed — we now use our RFC 6238-compliant implementation above.
 
 export function generateSecretBase32() {
-  // 20 bytes (160 bits) is the standard for TOTP secrets.
-  // otplib v12: returns a base32 string when called directly.
-  const s = generateSecret({ length: 20 });
-  return typeof s === 'string' ? s : s.secret;
+  return totpGenerateSecret(20);
 }
 
 export function buildOtpAuthUrl(email, secretBase32) {
-  return generateURI({
-    type: 'totp',
-    secret: secretBase32,
-    label: encodeURIComponent(email),
-    issuer: ISSUER,
-    algorithm: 'SHA1',
-    digits: 6,
-    period: 30,
-  });
+  return totpGenerateUri(secretBase32, email, ISSUER);
 }
 
 export async function verifyAndAdvance(secretBase32, token, lastUsedStep) {
-  const clean = String(token || '').replace(/\s+/g, '');
-  if (!/^\d{6}$/.test(clean)) return { ok: false, reason: 'format' };
-  // otplib v12 verify is async; returns a delta (0 = current step) or null.
-  let delta = null;
-  try {
-    delta = await totp.verify({ token: clean, secret: secretBase32 });
-  } catch {
-    return { ok: false, reason: 'invalid' };
-  }
-  if (delta === null || delta === undefined) return { ok: false, reason: 'invalid' };
-  const step = Math.floor(Date.now() / 1000 / 30);
-  if (lastUsedStep !== null && step <= lastUsedStep) return { ok: false, reason: 'replay' };
-  return { ok: true, step };
+  return totpVerifyAndAdvance(secretBase32, token, lastUsedStep);
 }
 
 // ----- HTTP routes -----
