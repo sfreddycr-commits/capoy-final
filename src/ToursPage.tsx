@@ -6,7 +6,7 @@ type Tour={id:number;slug:string;name:string;destination:string;shortDescription
 type Payload={summary:{total:number;draft:number;published:number;inactive:number};pagination:{page:number;limit:number;total:number;pages:number};tours:Tour[]};
 
 const statuses=[['draft','Borrador'],['published','Publicado'],['inactive','Inactivo']] as const;
-const MAX_GALLERY=6;
+const MAX_GALLERY=5;
 function initials(name:string){return name.split(/\s+/).filter(Boolean).slice(0,2).map(v=>v[0]?.toUpperCase()).join('')||'CA'}
 function money(value:number,currency:string){return new Intl.NumberFormat('es-CR',{style:'currency',currency}).format(value)}
 function parseGallery(value:unknown):string[]{if(!Array.isArray(value))return[];return value.filter((v):v is string=>typeof v==='string'&&!!v)}
