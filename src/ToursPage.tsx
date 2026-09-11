@@ -2,8 +2,16 @@ import { ChangeEvent, FormEvent, useEffect, useRef, useState } from 'react';
 import { ArrowLeft, Camera, ClipboardList, Edit3, Image as ImageIcon, LayoutDashboard, Loader2, LogOut, Menu, Plus, Search, ShieldCheck, Trash2, Upload, X } from 'lucide-react';
 
 type AdminUser={id:number;displayName:string;email:string;role:string};
-type Tour={id:number;slug:string;name:string;destination:string;shortDescription:string|null;description:string|null;duration:string|null;adultPrice:number;childPrice:number|null;currency:string;capacity:number|null;mainImageUrl:string|null;status:string;publishedAt:string|null;createdAt:string;updatedAt:string;galleryImages?:string[]};
+type Translation={name:string;destination:string;shortDescription:string|null;description:string|null;duration:string|null};
+type Tour={id:number;slug:string;name:string;destination:string;shortDescription:string|null;description:string|null;duration:string|null;adultPrice:number;childPrice:number|null;currency:string;capacity:number|null;mainImageUrl:string|null;status:string;publishedAt:string|null;createdAt:string;updatedAt:string;galleryImages?:string[];translations?:Record<string,Translation>};
 type Payload={summary:{total:number;draft:number;published:number;inactive:number};pagination:{page:number;limit:number;total:number;pages:number};tours:Tour[]};
+
+const LANGS=[['es','Español'],['en','English']] as const;
+type LangCode=typeof LANGS[number][0];
+
+function emptyTranslation():Translation{return{name:'',destination:'',shortDescription:null,description:null,duration:null}}
+function translationFromTour(t:Tour):Translation{return{name:t.name,destination:t.destination,shortDescription:t.shortDescription,description:t.description,duration:t.duration}}
+function translationFromMap(t:Tour,lang:LangCode):Translation{const tx=t.translations?.[lang];if(tx)return tx;return emptyTranslation()}
 
 const statuses=[['draft','Borrador'],['published','Publicado'],['inactive','Inactivo']] as const;
 const MAX_GALLERY=5;
@@ -15,15 +23,19 @@ export function ToursPage(){
   const [user,setUser]=useState<AdminUser|null>(null);const [data,setData]=useState<Payload|null>(null);const [loading,setLoading]=useState(true);const [error,setError]=useState('');
   const [query,setQuery]=useState('');const [status,setStatus]=useState('all');const [modal,setModal]=useState(false);const [editing,setEditing]=useState<Tour|null>(null);const [saving,setSaving]=useState(false);const [saveError,setSaveError]=useState('');const [mobileMenu,setMobileMenu]=useState(false);const [photoMode,setPhotoMode]=useState(false);const [previewUrl,setPreviewUrl]=useState<string|null>(null);const [uploading,setUploading]=useState(false);
   const [gallery,setGallery]=useState<string[]>([]);const [galleryUploading,setGalleryUploading]=useState<number|null>(null);const fileRefs=useRef<Record<number,HTMLInputElement|null>>({});
+  const [activeLang,setActiveLang]=useState<LangCode>('es');
+  const [translations,setTranslations]=useState<Record<LangCode,Translation>>({es:emptyTranslation(),en:emptyTranslation()});
 
   async function load(){setLoading(true);setError('');try{const params=new URLSearchParams({page:'1',limit:'100'});if(status!=='all')params.set('status',status);if(query.trim())params.set('q',query.trim());const [s,t]=await Promise.all([fetch('/api/auth/session',{credentials:'same-origin'}),fetch(`/api/admin/tours?${params}`,{credentials:'same-origin'})]);if(s.status===401||t.status===401){window.location.assign('/admin/login');return}if(!s.ok||!t.ok){const b=await t.json().catch(()=>({}));throw new Error(b.error||'No fue posible cargar los tours.')}setUser((await s.json()).user);setData(await t.json())}catch(e){setError(e instanceof Error?e.message:'No fue posible cargar los tours.')}finally{setLoading(false)}}
   useEffect(()=>{load()},[]);
   async function logout(){await fetch('/api/auth/logout',{method:'POST',credentials:'same-origin'}).catch(()=>null);window.location.assign('/admin/login')}
-  function openCreate(){setEditing(null);setSaveError('');setPhotoMode(false);setPreviewUrl(null);setGallery([]);setModal(true)}
-  function openEdit(tour:Tour){setEditing(tour);setSaveError('');setPhotoMode(false);setPreviewUrl(null);setGallery(parseGallery(tour.galleryImages));setModal(true)}
+  function openCreate(){setEditing(null);setSaveError('');setPhotoMode(false);setPreviewUrl(null);setGallery([]);setActiveLang('es');setTranslations({es:emptyTranslation(),en:emptyTranslation()});setModal(true)}
+  function openEdit(tour:Tour){setEditing(tour);setSaveError('');setPhotoMode(false);setPreviewUrl(null);setGallery(parseGallery(tour.galleryImages));setActiveLang('es');setTranslations({es:translationFromMap(tour,'es'),en:translationFromMap(tour,'en')});setModal(true)}
   function openPhoto(tour:Tour){setEditing(tour);setSaveError('');setPhotoMode(true);setPreviewUrl(tour.mainImageUrl||null);setModal(true)}
 
-  async function save(event:FormEvent<HTMLFormElement>){event.preventDefault();setSaving(true);setSaveError('');const form=new FormData(event.currentTarget);const payload={name:String(form.get('name')||''),slug:String(form.get('slug')||''),destination:String(form.get('destination')||''),shortDescription:String(form.get('shortDescription')||''),description:String(form.get('description')||''),duration:String(form.get('duration')||''),adultPrice:String(form.get('adultPrice')||'0'),childPrice:String(form.get('childPrice')||''),currency:String(form.get('currency')||'USD'),capacity:String(form.get('capacity')||''),mainImageUrl:String(form.get('mainImageUrl')||''),status:String(form.get('status')||'draft')};try{const response=await fetch(editing?`/api/admin/tours/${editing.id}`:'/api/admin/tours',{method:editing?'PATCH':'POST',headers:{'Content-Type':'application/json'},credentials:'same-origin',body:JSON.stringify(payload)});const body=await response.json().catch(()=>({}));if(!response.ok)throw new Error(body.error||'No fue posible guardar el tour.');setModal(false);setEditing(null);setPhotoMode(false);setPreviewUrl(null);setGallery([]);await load()}catch(e){setSaveError(e instanceof Error?e.message:'No fue posible guardar el tour.')}finally{setSaving(false)}}
+  function updateTranslation(lang:LangCode,field:keyof Translation,value:string){setTranslations((prev)=>({...prev,[lang]:{...prev[lang],[field]:value}}))}
+
+  async function save(event:FormEvent<HTMLFormElement>){event.preventDefault();setSaving(true);setSaveError('');const form=new FormData(event.currentTarget);const es=translations.es;const en=translations.en;const payload={name:String(es.name||''),slug:String(form.get('slug')||''),destination:String(es.destination||''),shortDescription:String(es.shortDescription||''),description:String(es.description||''),duration:String(es.duration||''),adultPrice:String(form.get('adultPrice')||'0'),childPrice:String(form.get('childPrice')||''),currency:String(form.get('currency')||'USD'),capacity:String(form.get('capacity')||''),mainImageUrl:String(form.get('mainImageUrl')||''),status:String(form.get('status')||'draft'),translations:{es:{name:es.name,destination:es.destination,shortDescription:es.shortDescription,description:es.description,duration:es.duration},en:{name:en.name,destination:en.destination,shortDescription:en.shortDescription,description:en.description,duration:en.duration}}};try{const response=await fetch(editing?`/api/admin/tours/${editing.id}`:'/api/admin/tours',{method:editing?'PATCH':'POST',headers:{'Content-Type':'application/json'},credentials:'same-origin',body:JSON.stringify(payload)});const body=await response.json().catch(()=>({}));if(!response.ok)throw new Error(body.error||'No fue posible guardar el tour.');setModal(false);setEditing(null);setPhotoMode(false);setPreviewUrl(null);setGallery([]);setTranslations({es:emptyTranslation(),en:emptyTranslation()});setActiveLang('es');await load()}catch(e){setSaveError(e instanceof Error?e.message:'No fue posible guardar el tour.')}finally{setSaving(false)}}
 
   async function uploadMainImage(file:File){if(!editing) return;setUploading(true);setSaveError('');try{const form=new FormData();form.append('image',file);const response=await fetch(`/api/admin/tours/${editing.id}/image`,{method:'POST',credentials:'same-origin',body:form});const body=await response.json().catch(()=>({}));if(!response.ok)throw new Error(body.error||'No fue posible subir la imagen.');setPreviewUrl(body.imageUrl);if(editing)setEditing({...editing,mainImageUrl:body.imageUrl});setSaveError('')  }catch(e){setSaveError(e instanceof Error?e.message:'No fue posible subir la imagen.')}finally{setUploading(false)}}
 
@@ -46,18 +58,25 @@ export function ToursPage(){
   {photoMode && (<div className="wide tour-photo-section"><div className="wide tour-photo-preview">{(editing?.mainImageUrl||previewUrl)?<img src={previewUrl||editing?.mainImageUrl||''} alt={editing?.name||'Imagen principal'}/>:<div className="tour-placeholder tall">Sin imagen</div>}</div><label className="tour-file-input"><Upload size={18}/> Seleccionar imagen principal<input type="file" accept="image/*" onChange={handleMainFileChange} disabled={uploading}/></label>{uploading&&<div className="tour-gallery-status"><Loader2 className="spin" size={15}/> Subiendo…</div>}</div>)}
   {!photoMode&&(<>
     {(!editing||editing.id)&&<>
-      <label>Nombre<input name="name" defaultValue={editing?.name||''} maxLength={180} required/></label>
+      <div className="wide tour-translations-bar">
+        <span>Idioma de los campos informativos:</span>
+        <div className="tour-translations-tabs">
+          {LANGS.map(([code,label])=><button key={code} type="button" className={activeLang===code?'active':''} onClick={()=>setActiveLang(code)}>{label}</button>)}
+        </div>
+        <small>Los campos en español son obligatorios. Si inglés queda vacío, el público verá el texto en español.</small>
+      </div>
+      <label>Nombre ({activeLang.toUpperCase()})<input name={`name_${activeLang}`} value={translations[activeLang].name} onChange={(e)=>updateTranslation(activeLang,'name',e.target.value)} maxLength={180} required={activeLang==='es'}/></label>
       <label>Slug<input name="slug" defaultValue={editing?.slug||''} placeholder="se genera desde el nombre" maxLength={190}/></label>
-      <label>Destino<input name="destination" defaultValue={editing?.destination||''} maxLength={160} required/></label>
-      <label>Duración<input name="duration" defaultValue={editing?.duration||''} maxLength={80} placeholder="8 horas"/></label>
+      <label>Destino ({activeLang.toUpperCase()})<input name={`destination_${activeLang}`} value={translations[activeLang].destination} onChange={(e)=>updateTranslation(activeLang,'destination',e.target.value)} maxLength={160} required={activeLang==='es'}/></label>
+      <label>Duración ({activeLang.toUpperCase()})<input name={`duration_${activeLang}`} value={translations[activeLang].duration||''} onChange={(e)=>updateTranslation(activeLang,'duration',e.target.value)} maxLength={80} placeholder="8 horas"/></label>
       <label>Precio adulto<input name="adultPrice" type="number" min="0" step="0.01" defaultValue={editing?.adultPrice??0} required/></label>
       <label>Precio niño<input name="childPrice" type="number" min="0" step="0.01" defaultValue={editing?.childPrice??''}/></label>
       <label>Moneda<input name="currency" defaultValue={editing?.currency||'USD'} maxLength={3} required/></label>
       <label>Capacidad<input name="capacity" type="number" min="1" defaultValue={editing?.capacity??''}/></label>
       <label className="wide">Imagen principal URL<input name="mainImageUrl" type="url" defaultValue={editing?.mainImageUrl||''} placeholder="https://..." autoFocus={!editing}/></label>
       <label>Estado<select name="status" defaultValue={editing?.status||'draft'}>{statuses.map(([v,l])=><option key={v} value={v}>{l}</option>)}</select></label>
-      <label className="wide">Descripción corta<input name="shortDescription" defaultValue={editing?.shortDescription||''} maxLength={320}/></label>
-      <label className="wide">Descripción<textarea name="description" rows={5} defaultValue={editing?.description||''}/></label>
+      <label className="wide">Descripción corta ({activeLang.toUpperCase()})<input name={`shortDescription_${activeLang}`} value={translations[activeLang].shortDescription||''} onChange={(e)=>updateTranslation(activeLang,'shortDescription',e.target.value)} maxLength={320}/></label>
+      <label className="wide">Descripción ({activeLang.toUpperCase()})<textarea name={`description_${activeLang}`} rows={5} value={translations[activeLang].description||''} onChange={(e)=>updateTranslation(activeLang,'description',e.target.value)}/></label>
     </>}
     {editing&&editing.id&&(
       <div className="wide tour-gallery-section">
