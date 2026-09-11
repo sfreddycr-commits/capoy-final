@@ -186,7 +186,7 @@ async function audit(req, eventType, { userId = null, email = null, metadata = n
 async function findSessionByToken(token) {
   if (!pool || !token || token.length < 40) return null;
   const [rows] = await pool.execute(
-    `SELECT s.id AS session_id, s.user_id, s.expires_at, u.email, u.display_name, u.role, u.status
+    `SELECT s.id AS session_id, s.user_id, s.expires_at, u.email, u.display_name, u.role, u.status, u.totp_enabled
      FROM admin_sessions s
      JOIN admin_users u ON u.id = s.user_id
      WHERE s.token_hash = ? AND s.expires_at > NOW() AND u.status = 'active'
@@ -211,6 +211,7 @@ async function requireSession(req, res, next) {
       displayName: session.display_name,
       role: session.role,
       sessionId: session.session_id,
+      twoFactorEnabled: Boolean(session.totp_enabled),
     };
     pool.execute('UPDATE admin_sessions SET last_seen_at = NOW() WHERE id = ?', [session.session_id]).catch(() => {});
     next();
@@ -449,7 +450,7 @@ app.post('/api/auth/login', sameOriginOnly, async (req, res) => {
     clearLoginRate(req, email);
     setSessionCookie(res, token, maxAgeMs);
     await audit(req, 'login_success', { userId: user.id, email });
-    res.json({ ok: true, user: { id: user.id, email: user.email, displayName: user.display_name, role: user.role } });
+    res.json({ ok: true, user: { id: user.id, email: user.email, displayName: user.display_name, role: user.role, twoFactorEnabled: user.totp_enabled === 1 || user.totp_enabled === true } });
   } catch (error) {
     console.error('login_failed_internal', error.message);
     res.status(503).json({ error: 'Servicio temporalmente no disponible.' });
@@ -457,7 +458,7 @@ app.post('/api/auth/login', sameOriginOnly, async (req, res) => {
 });
 
 app.get('/api/auth/session', requireSession, (req, res) => {
-  res.json({ ok: true, user: { id: req.admin.id, email: req.admin.email, displayName: req.admin.displayName, role: req.admin.role } });
+  res.json({ ok: true, user: { id: req.admin.id, email: req.admin.email, displayName: req.admin.displayName, role: req.admin.role, twoFactorEnabled: req.admin.twoFactorEnabled === true } });
 });
 
 app.post('/api/auth/logout', sameOriginOnly, requireSession, async (req, res) => {
