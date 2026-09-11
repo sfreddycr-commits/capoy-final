@@ -1,5 +1,9 @@
 import { registerUserRoutes } from './users.js';
 import { registerMaintenanceRoutes } from './maintenance.js';
+import path from 'node:path';
+import fs from 'node:fs';
+import crypto from 'node:crypto';
+import multer from 'multer';
 
 const ALLOWED_KEYS = new Set([
   'hero_eyebrow','hero_title','hero_lead','hero_primary_cta','hero_secondary_cta','hero_image',
@@ -7,6 +11,26 @@ const ALLOWED_KEYS = new Set([
 ]);
 function clean(value,max=5000){return String(value??'').trim().slice(0,max)}
 function validUrl(value){if(!value)return true;try{const u=new URL(value);return u.protocol==='http:'||u.protocol==='https:'}catch{return false}}
+
+const HERO_DIR = path.join(process.cwd(), 'uploads', 'cms', 'hero');
+fs.mkdirSync(HERO_DIR, { recursive: true });
+
+const heroUpload = multer({
+  storage: multer.diskStorage({
+    destination: (_req, _file, cb) => cb(null, HERO_DIR),
+    filename: (_req, file, cb) => {
+      const ext = (path.extname(file.originalname).toLowerCase().match(/\.(jpe?g|png|webp|gif)$/) || ['.jpg'])[0];
+      cb(null, `hero-${crypto.randomBytes(6).toString('hex')}-${Date.now().toString(36)}${ext}`);
+    },
+  }),
+  limits: { fileSize: 8 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    if (!['image/jpeg','image/png','image/webp','image/gif'].includes(file.mimetype)) {
+      return cb(new Error('Solo imágenes (JPEG, PNG, WebP, GIF).'));
+    }
+    cb(null, true);
+  },
+});
 
 export function registerCmsRoutes({app,pool,requireSession,sameOriginOnly,audit}){
   registerUserRoutes({app,pool,requireSession,sameOriginOnly,audit});
@@ -28,6 +52,14 @@ export function registerCmsRoutes({app,pool,requireSession,sameOriginOnly,audit}
       for(const row of rows)settings[row.setting_key]={value:row.setting_value,updatedAt:row.updated_at};
       res.json({ok:true,settings});
     }catch(error){console.error('cms_admin_failed',error.message);res.status(503).json({error:'No fue posible cargar el CMS.'})}
+  });
+
+  // Upload hero image (multipart, owner only). Returns the public URL to paste into hero_image.
+  app.post('/api/admin/cms/hero-image/upload', sameOriginOnly, requireSession, heroUpload.single('image'), async (req, res) => {
+    if (!req.file) return res.status(400).json({ error: 'No se recibió ninguna imagen.' });
+    const url = `/uploads/cms/hero/${req.file.filename}`;
+    await audit(req, 'cms_hero_image_uploaded', { userId: req.admin.id, email: req.admin.email, metadata: { filename: req.file.filename } });
+    res.json({ ok: true, url, filename: req.file.filename });
   });
 
   app.patch('/api/admin/cms', sameOriginOnly, requireSession, async (req,res)=>{
