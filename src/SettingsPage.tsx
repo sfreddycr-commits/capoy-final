@@ -321,7 +321,7 @@ export function SettingsPage() {
   const totalMatches = filteredSections.reduce((sum, s) => sum + s.keys.length, 0);
 
   return (
-    <div className="admin-shell settings-shell">
+    <div className="admin-app settings-shell">
       {toast && <Toast tone={toast.tone} message={toast.message} onClose={() => setToast(null)} />}
       <aside className="admin-sidebar">
         <div className="admin-logo"><div className="admin-logo-mark">C</div><div><strong>Capoy</strong><span>Costa Rica</span></div></div>
