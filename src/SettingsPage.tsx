@@ -1,5 +1,5 @@
-import { FormEvent, useEffect, useMemo, useRef, useState } from 'react';
-import { AlertTriangle, Eye, EyeOff, History, Loader2, Save, Settings as SettingsIcon, ShieldCheck, ShieldOff, X } from 'lucide-react';
+import { ChangeEvent, FormEvent, useEffect, useMemo, useRef, useState } from 'react';
+import { AlertTriangle, Download, Eye, EyeOff, History, Loader2, RotateCcw, Save, Search, Settings as SettingsIcon, ShieldCheck, ShieldOff, Upload, X } from 'lucide-react';
 
 type AdminUser = { id: number; displayName: string; email: string; role: string; twoFactorEnabled: boolean };
 type Setting = { value: string; updatedAt: string; updatedBy: { id: number; displayName: string; email: string } | null };
@@ -148,7 +148,10 @@ export function SettingsPage() {
   const [toast, setToast] = useState<{ tone: 'ok' | 'err'; message: string } | null>(null);
   const [showMaintenanceConfirm, setShowMaintenanceConfirm] = useState(false);
   const [revokingSessionId, setRevokingSessionId] = useState<number | null>(null);
+  const [search, setSearch] = useState('');
+  const [importing, setImporting] = useState(false);
   const initialRef = useRef<Record<string, string> | null>(null);
+  const importRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     async function load() {
@@ -255,6 +258,68 @@ export function SettingsPage() {
     }
   }
 
+  function exportSettings() {
+    window.location.href = '/api/admin/settings/export';
+  }
+
+  async function importSettings(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    if (file.size > 256 * 1024) {
+      setToast({ tone: 'err', message: 'El archivo es demasiado grande (máx 256 KB).' });
+      return;
+    }
+    setImporting(true);
+    try {
+      const text = await file.text();
+      const parsed = JSON.parse(text);
+      const incoming = parsed?.settings && typeof parsed.settings === 'object' ? parsed.settings : parsed;
+      if (!incoming || typeof incoming !== 'object' || Array.isArray(incoming)) {
+        throw new Error('Archivo inválido.');
+      }
+      const r = await fetch('/api/admin/settings/import', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
+        body: JSON.stringify({ settings: incoming }),
+      });
+      const body = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(body.error || 'No fue posible importar.');
+      setToast({ tone: 'ok', message: `${body.imported || 0} ajustes importados. Revisa y guarda los cambios.` });
+      const settingsRes = await fetch('/api/admin/settings', { credentials: 'same-origin' });
+      const data = await settingsRes.json();
+      setSettings(data.settings || {});
+      setDraft(Object.fromEntries(Object.entries(data.settings || {}).map(([k, v]) => [k, (v as Setting).value])));
+    } catch (e) {
+      setToast({ tone: 'err', message: e instanceof Error ? e.message : 'No fue posible importar.' });
+    } finally {
+      setImporting(false);
+      if (importRef.current) importRef.current.value = '';
+    }
+  }
+
+  function resetField(key: string) {
+    const original = settings[key]?.value ?? '';
+    setDraft((d) => ({ ...d, [key]: original }));
+  }
+
+  const filteredSections = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return SECTIONS;
+    return SECTIONS
+      .map((s) => ({
+        ...s,
+        keys: s.keys.filter((k) => {
+          const label = k.replace(/_/g, ' ');
+          const hint = HINTS[k] ?? '';
+          return label.toLowerCase().includes(q) || k.toLowerCase().includes(q) || hint.toLowerCase().includes(q);
+        }),
+      }))
+      .filter((s) => s.keys.length > 0);
+  }, [search]);
+
+  const totalMatches = filteredSections.reduce((sum, s) => sum + s.keys.length, 0);
+
   return (
     <div className="admin-shell settings-shell">
       {toast && <Toast tone={toast.tone} message={toast.message} onClose={() => setToast(null)} />}
@@ -279,71 +344,119 @@ export function SettingsPage() {
         {loading && <div className="admin-state"><Loader2 className="spin" size={18} /> Cargando…</div>}
 
         {!loading && user && (
-          <form onSubmit={save}>
-            {SECTIONS.map((section) => (
-              <section className="settings-card" key={section.key}>
-                <header>
-                  <h2>{section.title}</h2>
-                  <p>{section.description}</p>
-                </header>
-                {!editable && (
-                  <div className="settings-locked"><ShieldOff size={16} /> Solo el propietario puede modificar estos ajustes.</div>
-                )}
-                <div className="settings-grid">
-                  {section.keys.map((key) => {
-                    const setting = settings[key];
-                    const original = setting?.value ?? '';
-                    const value = draft[key] ?? original;
-                    const sensitive = key.includes('password') || key.includes('secret') || key === 'company_tax_id';
-                    return (
-                      <label key={key} className="settings-field">
-                        <div className="settings-field-head">
-                          <span className="settings-field-label">{key.replace(/_/g, ' ')}</span>
-                          {setting?.updatedBy && (
-                            <span className="settings-field-meta" title={`${setting.updatedBy.displayName} · ${setting.updatedBy.email}`}>
-                              por {setting.updatedBy.displayName} · {formatDate(setting.updatedAt)}
-                            </span>
-                          )}
-                        </div>
-                        <FieldInput
-                          settingKey={key}
-                          value={value}
-                          original={original}
-                          editable={editable}
-                          sensitive={sensitive}
-                          onChange={(v) => update(key, v)}
-                        />
-                        {HINTS[key] && <small className="settings-field-hint">{HINTS[key]}</small>}
-                      </label>
-                    );
-                  })}
-                </div>
-              </section>
-            ))}
-
+          <>
             {editable && (
-              <div className="settings-actions">
-                <button type="button" className="settings-cancel" disabled={!isDirty || saving} onClick={cancel}>Cancelar cambios</button>
-                <button type="submit" className="admin-primary" disabled={!isDirty || saving}>
-                  {saving ? <><Loader2 className="spin" size={17} /> Guardando…</> : <><Save size={17} /> Guardar {dirtyKeys.length || ''} {dirtyKeys.length === 1 ? 'cambio' : 'cambios'}</>}
-                </button>
+              <div className="settings-toolbar">
+                <div className="settings-search">
+                  <Search size={16} />
+                  <input
+                    type="search"
+                    placeholder="Buscar ajuste por nombre o descripción…"
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                  />
+                  {search && (
+                    <button type="button" onClick={() => setSearch('')} aria-label="Limpiar búsqueda"><X size={14} /></button>
+                  )}
+                </div>
+                <div className="settings-toolbar-info">
+                  {search && <span>{totalMatches} resultado{totalMatches === 1 ? '' : 's'}</span>}
+                </div>
+                <div className="settings-toolbar-actions">
+                  <button type="button" className="settings-toolbar-btn" onClick={exportSettings} title="Descargar JSON con toda la configuración">
+                    <Download size={15} /> Exportar
+                  </button>
+                  <button type="button" className="settings-toolbar-btn" disabled={importing} onClick={() => importRef.current?.click()} title="Importar configuración desde un JSON">
+                    {importing ? <><Loader2 className="spin" size={15} /> Importando…</> : <><Upload size={15} /> Importar</>}
+                  </button>
+                  <input ref={importRef} type="file" accept="application/json,.json" hidden onChange={importSettings} disabled={importing} />
+                </div>
               </div>
             )}
 
-            {showMaintenanceConfirm && (
-              <div className="settings-confirm">
-                <AlertTriangle size={20} />
-                <div>
-                  <strong>Vas a activar el modo mantenimiento.</strong>
-                  <p>El sitio público dejará de mostrar tours y mostrará un mensaje. ¿Confirmas?</p>
+            <form onSubmit={save}>
+              {filteredSections.map((section) => (
+                <section className="settings-card" key={section.key}>
+                  <header>
+                    <h2>{section.title}</h2>
+                    <p>{section.description}</p>
+                  </header>
+                  {!editable && (
+                    <div className="settings-locked"><ShieldOff size={16} /> Solo el propietario puede modificar estos ajustes.</div>
+                  )}
+                  <div className="settings-grid">
+                    {section.keys.map((key) => {
+                      const setting = settings[key];
+                      const original = setting?.value ?? '';
+                      const value = draft[key] ?? original;
+                      const sensitive = key.includes('password') || key.includes('secret') || key === 'company_tax_id';
+                      const isDirty = value !== original;
+                      return (
+                        <label key={key} className="settings-field">
+                          <div className="settings-field-head">
+                            <span className="settings-field-label">{key.replace(/_/g, ' ')}</span>
+                            <div className="settings-field-head-right">
+                              {setting?.updatedBy && (
+                                <span className="settings-field-meta" title={`${setting.updatedBy.displayName} · ${setting.updatedBy.email}`}>
+                                  por {setting.updatedBy.displayName} · {formatDate(setting.updatedAt)}
+                                </span>
+                              )}
+                              {editable && isDirty && (
+                                <button type="button" className="settings-field-reset" onClick={() => resetField(key)} title="Descartar cambio en este campo">
+                                  <RotateCcw size={12} />
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                          <FieldInput
+                            settingKey={key}
+                            value={value}
+                            original={original}
+                            editable={editable}
+                            sensitive={sensitive}
+                            onChange={(v) => update(key, v)}
+                          />
+                          {HINTS[key] && <small className="settings-field-hint">{HINTS[key]}</small>}
+                        </label>
+                      );
+                    })}
+                  </div>
+                </section>
+              ))}
+
+              {search && totalMatches === 0 && (
+                <div className="settings-empty">
+                  <Search size={32} />
+                  <strong>Sin resultados</strong>
+                  <span>No hay ajustes que coincidan con «{search}».</span>
+                  <button type="button" onClick={() => setSearch('')}>Limpiar búsqueda</button>
                 </div>
-                <div className="settings-confirm-actions">
-                  <button type="button" onClick={() => setShowMaintenanceConfirm(false)}>Cancelar</button>
-                  <button type="submit" className="admin-primary">Sí, activar</button>
+              )}
+
+              {editable && (
+                <div className="settings-actions">
+                  <button type="button" className="settings-cancel" disabled={!isDirty || saving} onClick={cancel}>Cancelar cambios</button>
+                  <button type="submit" className="admin-primary" disabled={!isDirty || saving}>
+                    {saving ? <><Loader2 className="spin" size={17} /> Guardando…</> : <><Save size={17} /> Guardar {dirtyKeys.length || ''} {dirtyKeys.length === 1 ? 'cambio' : 'cambios'}</>}
+                  </button>
                 </div>
-              </div>
-            )}
-          </form>
+              )}
+
+              {showMaintenanceConfirm && (
+                <div className="settings-confirm">
+                  <AlertTriangle size={20} />
+                  <div>
+                    <strong>Vas a activar el modo mantenimiento.</strong>
+                    <p>El sitio público dejará de mostrar tours y mostrará un mensaje. ¿Confirmas?</p>
+                  </div>
+                  <div className="settings-confirm-actions">
+                    <button type="button" onClick={() => setShowMaintenanceConfirm(false)}>Cancelar</button>
+                    <button type="submit" className="admin-primary">Sí, activar</button>
+                  </div>
+                </div>
+              )}
+            </form>
+          </>
         )}
 
         {!loading && user?.role === 'owner' && (

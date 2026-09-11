@@ -106,5 +106,59 @@ export function registerSettingsRoutes({app,pool,requireSession,sameOriginOnly,a
       res.status(503).json({ error: 'No fue posible revocar la sesión.' });
     }
   });
+
+  // Export settings as JSON (owner only)
+  app.get('/api/admin/settings/export', requireSession, requireOwner, async (req, res) => {
+    try {
+      const [rows] = await pool.query('SELECT setting_key, setting_value FROM app_settings');
+      const out = {
+        exportedAt: new Date().toISOString(),
+        exportedBy: req.admin.email,
+        schemaVersion: 1,
+        settings: Object.fromEntries(rows.map((r) => [r.setting_key, r.setting_value])),
+      };
+      res.setHeader('Content-Type', 'application/json; charset=utf-8');
+      res.setHeader('Content-Disposition', `attachment; filename="capoy-settings-${new Date().toISOString().slice(0, 10)}.json"`);
+      res.send(JSON.stringify(out, null, 2));
+    } catch (error) {
+      console.error('settings_export_failed', error.message);
+      res.status(503).json({ error: 'No fue posible exportar la configuración.' });
+    }
+  });
+
+  // Import settings from JSON (owner only)
+  app.post('/api/admin/settings/import', sameOriginOnly, requireSession, requireOwner, async (req, res) => {
+    const incoming = req.body?.settings;
+    if (!incoming || typeof incoming !== 'object' || Array.isArray(incoming)) {
+      return res.status(400).json({ error: 'Cuerpo de importación inválido.' });
+    }
+    const entries = [];
+    for (const [key, raw] of Object.entries(incoming)) {
+      const value = clean(raw, key === 'booking_email' ? 190 : 500);
+      const error = validate(key, value);
+      if (error) return res.status(400).json({ error: `${key}: ${error}` });
+      entries.push([key, value]);
+    }
+    if (!entries.length) return res.status(400).json({ error: 'No hay ajustes para importar.' });
+    const conn = await pool.getConnection();
+    try {
+      await conn.beginTransaction();
+      for (const [key, value] of entries) {
+        await conn.execute(
+          'INSERT INTO app_settings (setting_key, setting_value, updated_by_admin_id) VALUES (?,?,?) ON DUPLICATE KEY UPDATE setting_value=VALUES(setting_value), updated_by_admin_id=VALUES(updated_by_admin_id)',
+          [key, value, req.admin.id],
+        );
+      }
+      await conn.commit();
+      await audit(req, 'settings_imported', { userId: req.admin.id, email: req.admin.email, metadata: { keys: entries.map(([k]) => k), count: entries.length } });
+      res.json({ ok: true, imported: entries.length });
+    } catch (error) {
+      await conn.rollback();
+      console.error('settings_import_failed', error.message);
+      res.status(503).json({ error: 'No fue posible importar la configuración.' });
+    } finally {
+      conn.release();
+    }
+  });
  app.patch('/api/admin/settings',sameOriginOnly,requireSession,requireOwner,async(req,res)=>{const incoming=req.body?.settings;if(!incoming||typeof incoming!=='object'||Array.isArray(incoming))return res.status(400).json({error:'Configuración inválida.'});const entries=[];for(const [key,raw] of Object.entries(incoming)){const value=clean(raw,key==='booking_email'?190:500);const error=validate(key,value);if(error)return res.status(400).json({error});entries.push([key,value])}if(!entries.length)return res.status(400).json({error:'No hay cambios para guardar.'});const conn=await pool.getConnection();try{await conn.beginTransaction();for(const [key,value] of entries)await conn.execute('INSERT INTO app_settings (setting_key,setting_value,updated_by_admin_id) VALUES (?,?,?) ON DUPLICATE KEY UPDATE setting_value=VALUES(setting_value),updated_by_admin_id=VALUES(updated_by_admin_id)',[key,value,req.admin.id]);await conn.commit();await audit(req,'settings_updated',{userId:req.admin.id,email:req.admin.email,metadata:{keys:entries.map(([key])=>key)}});res.json({ok:true,updated:entries.length});}catch(error){await conn.rollback();console.error('settings_update_failed',error.message);res.status(503).json({error:'No fue posible guardar la configuración.'})}finally{conn.release()}});
 }
