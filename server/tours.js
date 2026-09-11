@@ -103,14 +103,33 @@ function parseJsonField(value) {
   return null;
 }
 
+function normalizeLang(value) {
+  const lang = String(value || '').trim().toLowerCase();
+  return /^[a-z]{2}$/.test(lang) ? lang : 'es';
+}
+
+function pickTranslated(row) {
+  // Prefer translated fields (joined from tour_translations for the requested lang).
+  // Fallback to the canonical `tours` columns when no translation row is present.
+  return {
+    name: row.t_name ?? row.name,
+    destination: row.t_destination ?? row.destination,
+    shortDescription: row.t_short_description ?? row.short_description,
+    description: row.t_description ?? row.description,
+    duration: row.t_duration ?? row.duration,
+  };
+}
+
 function mapPublicTour(row) {
+  const t = pickTranslated(row);
   return {
     id: Number(row.id),
     slug: row.slug,
-    name: row.name,
-    destination: row.destination,
-    shortDescription: row.short_description,
-    duration: row.duration,
+    name: t.name,
+    destination: t.destination,
+    shortDescription: t.shortDescription,
+    description: t.description,
+    duration: t.duration,
     adultPrice: Number(row.adult_price),
     childPrice: row.child_price === null ? null : Number(row.child_price),
     currency: row.currency,
@@ -118,20 +137,49 @@ function mapPublicTour(row) {
     mainImageUrl: row.main_image_url,
     galleryImages: parseJsonField(row.gallery_watermarked) || [],
     publishedAt: row.published_at,
+    language: row.t_lang || 'es',
   };
+}
+
+function parseTranslationPayload(value, maxLengths) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const out = {};
+  for (const lang of Object.keys(value)) {
+    if (!/^[a-z]{2}$/.test(lang)) continue;
+    const src = value[lang];
+    if (!src || typeof src !== 'object') continue;
+    out[lang] = {
+      name: String(src.name ?? '').trim().slice(0, maxLengths.name),
+      destination: String(src.destination ?? '').trim().slice(0, maxLengths.destination),
+      shortDescription: String(src.shortDescription ?? '').trim().slice(0, maxLengths.shortDescription) || null,
+      description: String(src.description ?? '').trim().slice(0, maxLengths.description) || null,
+      duration: String(src.duration ?? '').trim().slice(0, maxLengths.duration) || null,
+    };
+  }
+  return Object.keys(out).length ? out : null;
 }
 
 export function registerTourRoutes({ app, pool, requireSession, sameOriginOnly, audit }) {
   registerCustomerRoutes({ app, pool, requireSession, sameOriginOnly, audit });
 
-  app.get('/api/public/tours', async (_req, res) => {
+  app.get('/api/public/tours', async (req, res) => {
     try {
       res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
-      const [rows] = await pool.query(`SELECT id, slug, name, destination, short_description, duration, adult_price, child_price, currency, capacity, main_image_url, published_at, gallery_watermarked
-        FROM tours
-        WHERE status = 'published'
-        ORDER BY COALESCE(published_at, created_at) DESC, id DESC`);
-      res.json({ ok: true, total: rows.length, tours: rows.map(mapPublicTour) });
+      const lang = normalizeLang(req.query.lang);
+      const [rows] = await pool.query(
+        `SELECT t.id, t.slug, t.name, t.destination, t.short_description, t.description, t.duration,
+                t.adult_price, t.child_price, t.currency, t.capacity, t.main_image_url,
+                t.published_at, t.gallery_watermarked,
+                tt.lang AS t_lang, tt.name AS t_name, tt.destination AS t_destination,
+                tt.short_description AS t_short_description, tt.description AS t_description,
+                tt.duration AS t_duration
+         FROM tours t
+         LEFT JOIN tour_translations tt ON tt.tour_id = t.id AND tt.lang = ?
+         WHERE t.status = 'published'
+         ORDER BY COALESCE(t.published_at, t.created_at) DESC, t.id DESC`,
+        [lang],
+      );
+      res.json({ ok: true, total: rows.length, language: lang, tours: rows.map(mapPublicTour) });
     } catch (error) {
       console.error('public_tours_list_failed', error.message);
       res.status(503).json({ error: 'No fue posible cargar los tours disponibles.' });
@@ -170,6 +218,29 @@ export function registerTourRoutes({ app, pool, requireSession, sameOriginOnly, 
       ]);
       const summary = summaryRows[0] || {};
       const total = Number(countRows[0]?.total || 0);
+
+      const tourIds = rows.map((r) => r.id);
+      let translationsMap = new Map();
+      if (tourIds.length) {
+        const placeholders = tourIds.map(() => '?').join(',');
+        const [transRows] = await pool.execute(
+          `SELECT tour_id, lang, name, destination, short_description, description, duration
+           FROM tour_translations WHERE tour_id IN (${placeholders})`,
+          tourIds,
+        );
+        for (const tr of transRows) {
+          const key = Number(tr.tour_id);
+          if (!translationsMap.has(key)) translationsMap.set(key, {});
+          translationsMap.get(key)[tr.lang] = {
+            name: tr.name,
+            destination: tr.destination,
+            shortDescription: tr.short_description,
+            description: tr.description,
+            duration: tr.duration,
+          };
+        }
+      }
+
       res.json({
         ok: true,
         summary: { total: Number(summary.total || 0), draft: Number(summary.draftCount || 0), published: Number(summary.publishedCount || 0), inactive: Number(summary.inactiveCount || 0) },
@@ -181,6 +252,7 @@ export function registerTourRoutes({ app, pool, requireSession, sameOriginOnly, 
           currency: row.currency, capacity: row.capacity === null ? null : Number(row.capacity), mainImageUrl: row.main_image_url,
           status: row.status, publishedAt: row.published_at, createdAt: row.created_at, updatedAt: row.updated_at,
           galleryImages: parseJsonField(row.gallery_watermarked) || [],
+          translations: translationsMap.get(Number(row.id)) || {},
         })),
       });
     } catch (error) {
@@ -210,6 +282,33 @@ export function registerTourRoutes({ app, pool, requireSession, sameOriginOnly, 
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [payload.slug, payload.name, payload.destination, payload.shortDescription, payload.description, payload.duration, payload.adultPrice, payload.childPrice, payload.currency, payload.capacity, payload.mainImageUrl, payload.status, publishedAt, req.admin.id, req.admin.id]);
       await audit(req, 'tour_created', { userId: req.admin.id, email: req.admin.email, metadata: { tourId: result.insertId, slug: payload.slug } });
+
+      // Persist translations (ES is mandatory; others optional). Keep `tours` columns in sync with ES.
+      const translations = parseTranslationPayload(req.body?.translations, {
+        name: 180, destination: 160, shortDescription: 320, description: 12000, duration: 80,
+      });
+      if (translations) {
+        const tourId = Number(result.insertId);
+        for (const [lang, fields] of Object.entries(translations)) {
+          if (lang === 'es') {
+            await pool.execute(
+              `INSERT INTO tour_translations (tour_id, lang, name, destination, short_description, description, duration)
+               VALUES (?, 'es', ?, ?, ?, ?, ?)
+               ON DUPLICATE KEY UPDATE name=VALUES(name), destination=VALUES(destination),
+                 short_description=VALUES(short_description), description=VALUES(description), duration=VALUES(duration)`,
+              [tourId, fields.name, fields.destination, fields.shortDescription, fields.description, fields.duration],
+            );
+          } else {
+            await pool.execute(
+              `INSERT INTO tour_translations (tour_id, lang, name, destination, short_description, description, duration)
+               VALUES (?, ?, ?, ?, ?, ?, ?)
+               ON DUPLICATE KEY UPDATE name=VALUES(name), destination=VALUES(destination),
+                 short_description=VALUES(short_description), description=VALUES(description), duration=VALUES(duration)`,
+              [tourId, lang, fields.name, fields.destination, fields.shortDescription, fields.description, fields.duration],
+            );
+          }
+        }
+      }
 
       // Persist gallery if provided in the create payload
       const incomingGallery = Array.isArray(req.body?.gallery_images) ? req.body.gallery_images.filter(u => typeof u === 'string' && /^https?:\/\//i.test(u)).slice(0, 12) : [];
@@ -262,6 +361,22 @@ export function registerTourRoutes({ app, pool, requireSession, sameOriginOnly, 
       await pool.execute(`UPDATE tours SET slug=?, name=?, destination=?, short_description=?, description=?, duration=?, adult_price=?, child_price=?, currency=?, capacity=?, main_image_url=?, status=?, published_at=?, updated_by_admin_id=? WHERE id=?`,
         [payload.slug, payload.name, payload.destination, payload.shortDescription, payload.description, payload.duration, payload.adultPrice, payload.childPrice, payload.currency, payload.capacity, payload.mainImageUrl, payload.status, publishedAt, req.admin.id, id]);
       await audit(req, 'tour_updated', { userId: req.admin.id, email: req.admin.email, metadata: { tourId: id, status: payload.status } });
+
+      // Persist translations if provided (ES keeps `tours` columns in sync).
+      const translations = parseTranslationPayload(req.body?.translations, {
+        name: 180, destination: 160, shortDescription: 320, description: 12000, duration: 80,
+      });
+      if (translations) {
+        for (const [lang, fields] of Object.entries(translations)) {
+          await pool.execute(
+            `INSERT INTO tour_translations (tour_id, lang, name, destination, short_description, description, duration)
+             VALUES (?, ?, ?, ?, ?, ?, ?)
+             ON DUPLICATE KEY UPDATE name=VALUES(name), destination=VALUES(destination),
+               short_description=VALUES(short_description), description=VALUES(description), duration=VALUES(duration)`,
+            [id, lang, fields.name, fields.destination, fields.shortDescription, fields.description, fields.duration],
+          );
+        }
+      }
 
       // Persist gallery if provided in the PATCH payload
       if (Array.isArray(req.body?.gallery_images)) {
