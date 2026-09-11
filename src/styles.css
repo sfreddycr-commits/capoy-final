@@ -16,9 +16,13 @@
 button.card-btn{font-family:inherit;border:0;cursor:pointer}
 
 .public-tour-modal-overlay{position:fixed;inset:0;background:rgba(8,30,20,.66);display:none;align-items:center;justify-content:center;z-index:80;padding:16px;backdrop-filter:blur(4px)}
-.public-tour-modal-overlay[data-public-tour-modal="open"]{display:flex}
+.public-tour-modal-overlay[data-public-tour-modal="open"]{display:flex;animation:publicTourModalFade .22s ease-out}
+@keyframes publicTourModalFade{from{opacity:0}to{opacity:1}}
+.public-tour-modal-overlay[data-public-tour-modal="open"] .public-tour-modal{animation:publicTourModalSlide .26s cubic-bezier(.2,.7,.2,1)}
+@keyframes publicTourModalSlide{from{opacity:0;transform:translateY(14px) scale(.98)}to{opacity:1;transform:translateY(0) scale(1)}}
 .public-tour-modal{position:relative;background:#fff;border-radius:14px;max-width:880px;width:100%;max-height:92vh;overflow:auto;box-shadow:0 22px 50px rgba(0,0,0,.28);display:flex;flex-direction:column}
-.public-tour-modal-close{position:absolute;top:8px;right:8px;background:rgba(0,0,0,.55);color:#fff;border:0;width:34px;height:34px;border-radius:50%;font-size:22px;line-height:1;cursor:pointer;z-index:2}
+.public-tour-modal-close{position:absolute;top:10px;right:10px;background:rgba(0,0,0,.6);color:#fff;border:0;width:36px;height:36px;border-radius:50%;font-size:20px;line-height:1;cursor:pointer;z-index:2;display:flex;align-items:center;justify-content:center;transition:background .15s ease}
+.public-tour-modal-close:hover,.public-tour-modal-close:focus-visible{background:rgba(0,0,0,.85);outline:none}
 .public-tour-modal-carousel{position:relative;background:#0b5a35;width:100%;aspect-ratio:16/9;overflow:hidden}
 .public-tour-modal-track{display:flex;transition:transform .35s ease;height:100%}
 .public-tour-modal-slide{height:100%;object-fit:cover;display:block}

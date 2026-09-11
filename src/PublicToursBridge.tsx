@@ -164,7 +164,28 @@ function buildModal() {
   return overlay;
 }
 
-let carouselIndex = 0;
+let lastTrigger: HTMLElement | null = null;
+
+function getModalFocusable(overlay: HTMLElement): HTMLElement[] {
+  const sel = 'a[href], button:not([disabled]), [tabindex]:not([tabindex="-1"])';
+  return Array.from(overlay.querySelectorAll<HTMLElement>(sel)).filter((el) => !el.hidden && el.offsetParent !== null);
+}
+
+function trapTab(event: KeyboardEvent, overlay: HTMLElement) {
+  if (event.key !== 'Tab') return;
+  const focusables = getModalFocusable(overlay);
+  if (focusables.length === 0) return;
+  const first = focusables[0];
+  const last = focusables[focusables.length - 1];
+  const active = document.activeElement as HTMLElement | null;
+  if (event.shiftKey && (active === first || !overlay.contains(active))) {
+    event.preventDefault();
+    last.focus();
+  } else if (!event.shiftKey && active === last) {
+    event.preventDefault();
+    first.focus();
+  }
+}
 
 function renderModal(overlay: HTMLElement, tour: PublicTour) {
   const dialog = overlay.querySelector<HTMLElement>('.public-tour-modal')!;
@@ -261,17 +282,26 @@ function applyCarouselPosition(track: HTMLElement, dots: HTMLElement, index: num
   });
 }
 
-function openModal(overlay: HTMLElement, tour: PublicTour) {
+function openModal(overlay: HTMLElement, tour: PublicTour, trigger: HTMLElement | null) {
+  lastTrigger = trigger;
   renderModal(overlay, tour);
   overlay.dataset.publicTourModal = 'open';
   overlay.setAttribute('aria-hidden', 'false');
   document.body.style.overflow = 'hidden';
+  const closeBtn = overlay.querySelector<HTMLButtonElement>('.public-tour-modal-close');
+  closeBtn?.focus();
 }
 
 function closeModal(overlay: HTMLElement) {
+  if (overlay.dataset.publicTourModal !== 'open') return;
   overlay.dataset.publicTourModal = 'closed';
   overlay.setAttribute('aria-hidden', 'true');
   document.body.style.overflow = '';
+  const restore = lastTrigger;
+  lastTrigger = null;
+  if (restore && document.contains(restore)) {
+    window.requestAnimationFrame(() => restore.focus());
+  }
 }
 
 export function PublicToursBridge() {
@@ -287,7 +317,11 @@ export function PublicToursBridge() {
     });
     const onKey = (event: KeyboardEvent) => {
       if (overlay.dataset.publicTourModal !== 'open') return;
-      if (event.key === 'Escape') closeModal(overlay);
+      if (event.key === 'Escape') {
+        closeModal(overlay);
+        return;
+      }
+      trapTab(event, overlay);
     };
     document.addEventListener('keydown', onKey);
 
@@ -312,7 +346,7 @@ export function PublicToursBridge() {
         tours.forEach((tour) => {
           const card = buildTourCard(tour);
           const btn = card.querySelector<HTMLButtonElement>('[data-public-tour-details]');
-          btn?.addEventListener('click', () => openModal(overlay, tour));
+          btn?.addEventListener('click', () => openModal(overlay, tour, btn));
           fragment.appendChild(card);
         });
         grid.appendChild(fragment);
