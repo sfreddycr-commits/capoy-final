@@ -36,6 +36,35 @@ const HINTS: Record<string, string> = {
   social_youtube: 'URL completa del canal de YouTube.',
 };
 
+const LABELS: Record<string, string> = {
+  business_name: 'Nombre comercial',
+  timezone: 'Zona horaria',
+  default_currency: 'Moneda predeterminada',
+  default_language: 'Idioma predeterminado',
+  booking_email: 'Correo de reservas',
+  booking_phone: 'Teléfono de reservas',
+  reservation_prefix: 'Prefijo de reservas',
+  maintenance_mode: 'Modo mantenimiento',
+  company_legal_name: 'Razón social',
+  company_tax_id: 'Identificación tributaria',
+  company_phone: 'Teléfono principal',
+  company_whatsapp: 'WhatsApp',
+  company_email: 'Correo corporativo',
+  company_address: 'Dirección',
+  company_hours: 'Horario de atención',
+  company_tagline: 'Eslogan',
+  company_country: 'País',
+  company_website: 'Sitio web',
+  company_logo_url: 'URL del logo',
+  company_favicon_url: 'URL del favicon',
+  currency_symbol: 'Símbolo de moneda',
+  social_facebook: 'Facebook',
+  social_instagram: 'Instagram',
+  social_tiktok: 'TikTok',
+  social_whatsapp_link: 'Enlace WhatsApp',
+  social_youtube: 'YouTube',
+};
+
 const SECTIONS: Array<{ key: string; title: string; description: string; keys: string[] }> = [
   {
     key: 'general', title: 'Operación general', description: 'Ajustes base que afectan al sistema completo.',
@@ -394,7 +423,7 @@ export function SettingsPage() {
                       return (
                         <label key={key} className="settings-field">
                           <div className="settings-field-head">
-                            <span className="settings-field-label">{key.replace(/_/g, ' ')}</span>
+                            <span className="settings-field-label">{LABELS[key] ?? key.replace(/_/g, ' ')}</span>
                             <div className="settings-field-head-right">
                               {setting?.updatedBy && (
                                 <span className="settings-field-meta" title={`${setting.updatedBy.displayName} · ${setting.updatedBy.email}`}>
