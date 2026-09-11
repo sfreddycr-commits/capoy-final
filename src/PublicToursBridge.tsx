@@ -164,6 +164,7 @@ function buildModal() {
   return overlay;
 }
 
+let carouselIndex = 0;
 let lastTrigger: HTMLElement | null = null;
 
 function getModalFocusable(overlay: HTMLElement): HTMLElement[] {
