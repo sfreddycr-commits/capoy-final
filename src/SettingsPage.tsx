@@ -1,5 +1,6 @@
 import { ChangeEvent, FormEvent, useEffect, useMemo, useRef, useState } from 'react';
-import { AlertTriangle, Download, Eye, EyeOff, History, Loader2, RotateCcw, Save, Search, Settings as SettingsIcon, ShieldCheck, ShieldOff, Upload, X } from 'lucide-react';
+import { AlertTriangle, Download, Eye, EyeOff, History, Loader2, RotateCcw, Save, Search, ShieldCheck, ShieldOff, Upload, X } from 'lucide-react';
+import { AdminShell } from './AdminShell';
 
 type AdminUser = { id: number; displayName: string; email: string; role: string; twoFactorEnabled: boolean };
 type Setting = { value: string; updatedAt: string; updatedBy: { id: number; displayName: string; email: string } | null };
@@ -223,6 +224,15 @@ export function SettingsPage() {
     load();
   }, []);
 
+  async function logout() {
+    try {
+      await fetch('/api/auth/logout', { method: 'POST', credentials: 'same-origin' });
+    } catch {
+      // noop
+    }
+    location.assign('/admin/login');
+  }
+
   const editable = user?.role === 'owner';
   const dirtyKeys = useMemo(() => Object.keys(draft).filter((k) => draft[k] !== (settings[k]?.value ?? '')), [draft, settings]);
   const isDirty = dirtyKeys.length > 0;
@@ -350,25 +360,9 @@ export function SettingsPage() {
   const totalMatches = filteredSections.reduce((sum, s) => sum + s.keys.length, 0);
 
   return (
-    <div className="admin-app settings-shell">
+    <AdminShell user={user} title="Configuración" onLogout={logout}>
       {toast && <Toast tone={toast.tone} message={toast.message} onClose={() => setToast(null)} />}
-      <aside className="admin-sidebar">
-        <div className="admin-logo"><div className="admin-logo-mark">C</div><div><strong>Capoy</strong><span>Costa Rica</span></div></div>
-        <nav>
-          {[['Dashboard','/admin'],['Reservas','/admin/reservas'],['Tours','/admin/tours'],['Clientes','/admin/clientes'],['Proveedores','/admin/proveedores'],['Flota','/admin/flota'],['Reseñas','/admin/resenas'],['CMS','/admin/cms'],['Empresa','/admin/empresa'],['Usuarios','/admin/usuarios'],['Configuración','/admin/configuracion']].map(([n, h]) => (
-            <a className={n === 'Configuración' ? 'active' : ''} href={h} key={n}>{n}</a>
-          ))}
-        </nav>
-      </aside>
-      <main className="admin-main">
-        <header className="admin-topbar">
-          <div>
-            <span className="admin-kicker">SISTEMA</span>
-            <h1>Configuración</h1>
-            <p>Ajustes operativos generales de CAPOY. Los secretos permanecen fuera de esta pantalla.</p>
-          </div>
-          <SettingsIcon size={30} />
-        </header>
+      <main className="admin-content" style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
 
         {loading && <div className="admin-state"><Loader2 className="spin" size={18} /> Cargando…</div>}
 
@@ -553,6 +547,6 @@ export function SettingsPage() {
           </section>
         )}
       </main>
-    </div>
+    </AdminShell>
   );
 }

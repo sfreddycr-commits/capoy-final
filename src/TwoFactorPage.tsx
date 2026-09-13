@@ -1,13 +1,10 @@
 import { FormEvent, useEffect, useState } from 'react';
-import { ArrowLeft, Loader2, LockKeyhole, LogOut, Menu, ShieldCheck, X } from 'lucide-react';
+import { Loader2, LockKeyhole } from 'lucide-react';
+import { AdminShell } from './AdminShell';
 
 type AdminUser = { id: number; displayName: string; email: string; role: string };
 
 type Status = { enabled: boolean; enabledAt: string | null };
-
-function initials(name: string) {
-  return name.split(/\s+/).filter(Boolean).slice(0, 2).map(v => v[0]?.toUpperCase()).join('') || 'CA';
-}
 
 export function TwoFactorPage() {
   const [user, setUser] = useState<AdminUser | null>(null);
@@ -20,7 +17,6 @@ export function TwoFactorPage() {
   const [recoveryCode, setRecoveryCode] = useState('');
   const [message, setMessage] = useState('');
   const [busy, setBusy] = useState(false);
-  const [mobileMenu, setMobileMenu] = useState(false);
 
   async function load() {
     setLoading(true);
@@ -122,53 +118,8 @@ export function TwoFactorPage() {
   const qrUrl = enrollment ? `https://api.qrserver.com/v1/create-qr-code/?size=240x240&data=${encodeURIComponent(enrollment.otpauthUrl)}&margin=1` : null;
 
   return (
-    <div className="admin-shell">
-      <aside className={`admin-sidebar ${mobileMenu ? 'open' : ''}`}>
-        <div className="admin-logo">
-          <div className="admin-logo-mark">C</div>
-          <div><strong>Capoy</strong><span>Costa Rica</span></div>
-        </div>
-        <nav>
-          {[
-            ['Dashboard', '/admin'],
-            ['Reservas', '/admin/reservas'],
-            ['Tours', '/admin/tours'],
-            ['Clientes', '/admin/clientes'],
-            ['Proveedores', '/admin/proveedores'],
-            ['Flota', '/admin/flota'],
-            ['Reseñas', '/admin/resenas'],
-            ['CMS', '/admin/cms'],
-            ['Empresa', '/admin/empresa'],
-            ['Seguridad', '/admin/seguridad'],
-            ['Usuarios', '/admin/usuarios'],
-            ['Configuración', '/admin/configuracion'],
-          ].map(([n, h]) => (
-            <a className={n === 'Seguridad' ? 'active' : ''} href={h} key={n}>{n}</a>
-          ))}
-        </nav>
-        <div className="admin-sidebar-bottom">
-          <div><ShieldCheck size={16}/> Sesión protegida</div>
-          {user && (
-            <div className="admin-user">
-              <span>{initials(user.displayName)}</span>
-              <div><strong>{user.displayName}</strong><small>{user.role}</small></div>
-            </div>
-          )}
-          <button onClick={logout}><LogOut size={17}/> Cerrar sesión</button>
-        </div>
-      </aside>
-      {mobileMenu && <button className="admin-backdrop" onClick={() => setMobileMenu(false)} />}
-      <main className="admin-main">
-        <header className="admin-topbar">
-          <div>
-            <button className="admin-menu" onClick={() => setMobileMenu(true)}><Menu size={20}/></button>
-            <a href="/admin"><ArrowLeft size={17}/> Administración</a>
-            <span>/</span>
-            <strong>Seguridad</strong>
-          </div>
-          {user && <small>{user.email}</small>}
-        </header>
-
+    <AdminShell user={user} title="Seguridad" onLogout={logout} topbarRight={user ? <small style={{ fontSize: 11, color: '#8a938d' }}>{user.email}</small> : undefined}>
+      <main className="admin-content">
         <section className="admin-card">
           <header className="company-header">
             <div>
@@ -267,6 +218,6 @@ export function TwoFactorPage() {
           )}
         </section>
       </main>
-    </div>
+    </AdminShell>
   );
 }

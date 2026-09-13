@@ -31,7 +31,11 @@ function formatPrice(value: number, currency: string) {
 }
 
 function safeImage(url: string) {
-  return /^https?:\/\//i.test(url) ? url : FALLBACK_IMAGE;
+  if (!url) return FALLBACK_IMAGE;
+  if (url.startsWith("https://")) return url;
+  if (url.startsWith("http://")) return url;
+  if (url.startsWith("/uploads")) return url;
+  return FALLBACK_IMAGE;
 }
 
 function textElement<K extends keyof HTMLElementTagNameMap>(tag: K, className: string | null, text: string) {

@@ -1,5 +1,6 @@
 import { FormEvent, useEffect, useState } from 'react';
-import { ArrowLeft, Building2, Camera, ImageIcon, LayoutDashboard, Loader2, LogOut, Menu, Save, ShieldCheck, Upload, X } from 'lucide-react';
+import { Building2, ImageIcon, Loader2, Save, Upload, X } from 'lucide-react';
+import { AdminShell } from './AdminShell';
 
 type AdminUser = { id: number; displayName: string; email: string; role: string };
 
@@ -57,17 +58,12 @@ const OPTIONS: Record<string, string[]> = {
   timezone: ['America/Costa_Rica', 'America/Panama', 'America/Guatemala', 'America/Mexico_City', 'America/New_York', 'UTC'],
 };
 
-function initials(name: string) {
-  return name.split(/\s+/).filter(Boolean).slice(0, 2).map(v => v[0]?.toUpperCase()).join('') || 'CA';
-}
-
 export function CompanySettingsPage() {
   const [user, setUser] = useState<AdminUser | null>(null);
   const [settings, setSettings] = useState<Settings>({});
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState('');
-  const [mobileMenu, setMobileMenu] = useState(false);
   const [logoUrl, setLogoUrl] = useState<string | null>(null);
   const [faviconUrl, setFaviconUrl] = useState<string | null>(null);
   const [uploading, setUploading] = useState<'logo' | 'favicon' | null>(null);
@@ -171,51 +167,8 @@ export function CompanySettingsPage() {
   const activeKeys = SECTIONS.find(s => s.title === active)?.keys ?? [];
 
   return (
-    <div className="admin-shell">
-      <aside className={`admin-sidebar ${mobileMenu ? 'open' : ''}`}>
-        <div className="admin-logo">
-          <div className="admin-logo-mark">C</div>
-          <div><strong>Capoy</strong><span>Costa Rica</span></div>
-        </div>
-        <nav>
-          {[
-            ['Dashboard', '/admin'],
-            ['Reservas', '/admin/reservas'],
-            ['Tours', '/admin/tours'],
-            ['Clientes', '/admin/clientes'],
-            ['Proveedores', '/admin/proveedores'],
-            ['Flota', '/admin/flota'],
-            ['Reseñas', '/admin/resenas'],
-            ['CMS', '/admin/cms'],
-            ['Empresa', '/admin/empresa'],
-            ['Usuarios', '/admin/usuarios'],
-            ['Configuración', '/admin/configuracion'],
-          ].map(([n, h]) => (
-            <a className={n === 'Empresa' ? 'active' : ''} href={h} key={n}>{n}</a>
-          ))}
-        </nav>
-        <div className="admin-sidebar-bottom">
-          <div><ShieldCheck size={16}/> Sesión protegida</div>
-          {user && (
-            <div className="admin-user">
-              <span>{initials(user.displayName)}</span>
-              <div><strong>{user.displayName}</strong><small>{user.role}</small></div>
-            </div>
-          )}
-          <button onClick={logout}><LogOut size={17}/> Cerrar sesión</button>
-        </div>
-      </aside>
-      {mobileMenu && <button className="admin-backdrop" onClick={() => setMobileMenu(false)} />}
-      <main className="admin-main">
-        <header className="admin-topbar">
-          <div>
-            <button className="admin-menu" onClick={() => setMobileMenu(true)}><Menu size={20}/></button>
-            <a href="/admin"><ArrowLeft size={17}/> Administración</a>
-            <span>/</span>
-            <strong>Empresa</strong>
-          </div>
-          {user && <small>{user.email}</small>}
-        </header>
+    <AdminShell user={user} title="Empresa" onLogout={logout} topbarRight={user ? <small style={{ fontSize: 11, color: '#8a938d' }}>{user.email}</small> : undefined}>
+      <main className="admin-content">
         <section className="admin-card">
           <header className="company-header">
             <div>
@@ -355,6 +308,6 @@ export function CompanySettingsPage() {
           {message && <p className={`admin-message ${message.startsWith('Configuración') ? 'success' : 'error'}`} role="status">{message}</p>}
         </section>
       </main>
-    </div>
+    </AdminShell>
   );
 }
