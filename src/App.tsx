@@ -173,7 +173,7 @@ function PublicLanding() {
           <p className="lead">{landing.hero.lead}</p>
           <div className="hero-buttons"><a className="primary-ghost" href="#tours">{landing.hero.primaryCta} <ChevronRight size={18}/></a><a className="secondary-btn" href="#como-funciona">{landing.hero.secondaryCta}</a></div>
         </div>
-        <div className="hero-stats">{landing.hero.stats.map((stat, index) => { const Icon = ICON_MAP[stat.icon] || CheckCircle2; return <div className="stat" key={index}><Icon/><div><strong>{stat.value}</strong><span>{stat.label}</span>{stat.stars && <em>{stat.stars}</em>}</div></div>; })}</div>
+        
       </div>
     </section>
 
