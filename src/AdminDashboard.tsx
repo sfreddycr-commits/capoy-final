@@ -5,14 +5,18 @@ import {
   Bell,
   BusFront,
   CalendarRange,
+  Camera,
   ChevronRight,
   CircleAlert,
   Building2,
   CircleCheck,
   Clock3,
   Database,
+  Edit3,
+  Eye,
   Handshake,
   LayoutDashboard,
+  Loader2,
   LogOut,
   MapPinned,
   Menu,
@@ -23,6 +27,8 @@ import {
   Settings,
   ShieldCheck,
   Star,
+  ToggleLeft,
+  ToggleRight,
   UserRoundCog,
   Users,
   X,
@@ -48,6 +54,25 @@ type AuditEvent = {
   eventType: string;
   email: string | null;
   createdAt: string;
+};
+
+type DashboardTour = {
+  id: number;
+  name: string;
+  destination: string;
+  duration: string | null;
+  adultPrice: number;
+  currency: string;
+  mainImageUrl: string | null;
+  status: string;
+  featured: boolean;
+  sortOrder: number | null;
+};
+
+const tourStatusLabel: Record<string, string> = {
+  draft: 'Borrador',
+  published: 'Publicado',
+  inactive: 'Inactivo',
 };
 
 type DashboardPayload = {
@@ -123,25 +148,38 @@ export function AdminDashboard() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [tourCards, setTourCards] = useState<DashboardTour[] | null>(null);
+  const [tourCardsError, setTourCardsError] = useState('');
+  const [busyTour, setBusyTour] = useState<number | null>(null);
 
   const pathname = window.location.pathname.replace(/\/$/, '') || '/admin';
 
   async function loadDashboard() {
     setLoading(true);
     setError('');
+    setTourCards(null);
+    setTourCardsError('');
     try {
-      const [sessionResponse, dashboardResponse] = await Promise.all([
+      const [sessionResponse, dashboardResponse, toursResponse] = await Promise.all([
         fetch('/api/auth/session', { credentials: 'same-origin' }),
         fetch('/api/admin/dashboard', { credentials: 'same-origin' }),
+        fetch('/api/admin/tours?page=1&limit=100', { credentials: 'same-origin' }),
       ]);
 
-      if (sessionResponse.status === 401 || dashboardResponse.status === 401) {
+      if (sessionResponse.status === 401 || dashboardResponse.status === 401 || toursResponse.status === 401) {
         window.location.assign('/admin/login');
         return;
       }
 
       if (!sessionResponse.ok) throw new Error('No fue posible validar la sesión.');
       if (!dashboardResponse.ok) throw new Error('No fue posible cargar el estado operativo.');
+
+      if (toursResponse.ok) {
+        const toursData = await toursResponse.json();
+        setTourCards(toursData.tours ?? []);
+      } else {
+        setTourCardsError('No fue posible cargar los tours del panel.');
+      }
 
       const sessionData = await sessionResponse.json();
       const dashboardData = await dashboardResponse.json();
@@ -157,6 +195,48 @@ export function AdminDashboard() {
   useEffect(() => {
     loadDashboard();
   }, []);
+
+  async function patchTourState(id: number, changes: { featured?: boolean; status?: string }) {
+    const response = await fetch(`/api/admin/tours/${id}/state`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(changes),
+      credentials: 'same-origin',
+    });
+    if (response.status === 401) {
+      window.location.assign('/admin/login');
+      return null;
+    }
+    const data = await response.json().catch(() => null);
+    if (!response.ok) throw new Error(data?.error || 'No fue posible actualizar el tour.');
+    return data?.tour as DashboardTour | null;
+  }
+
+  async function toggleTour(tour: DashboardTour) {
+    setBusyTour(tour.id);
+    setTourCardsError('');
+    try {
+      const updated = await patchTourState(tour.id, { status: tour.status === 'published' ? 'inactive' : 'published' });
+      if (updated) setTourCards((current) => current?.map((item) => (item.id === updated.id ? updated : item)) ?? null);
+    } catch (reason) {
+      setTourCardsError(reason instanceof Error ? reason.message : 'No fue posible actualizar el tour.');
+    } finally {
+      setBusyTour(null);
+    }
+  }
+
+  async function toggleFeatured(tour: DashboardTour) {
+    setBusyTour(tour.id);
+    setTourCardsError('');
+    try {
+      const updated = await patchTourState(tour.id, { featured: !tour.featured });
+      if (updated) setTourCards((current) => current?.map((item) => (item.id === updated.id ? updated : item)) ?? null);
+    } catch (reason) {
+      setTourCardsError(reason instanceof Error ? reason.message : 'No fue posible actualizar el tour.');
+    } finally {
+      setBusyTour(null);
+    }
+  }
 
   async function logout() {
     await fetch('/api/auth/logout', { method: 'POST', credentials: 'same-origin' }).catch(() => null);
@@ -301,6 +381,36 @@ export function AdminDashboard() {
               </div>)}</div>
             </article>
           </section>
+
+          {tourCards !== null && <section className="admin-tours-section">
+            <div className="admin-section-heading">
+              <div><span>TOURS</span><h2>Experiencias activas</h2></div>
+              <a className="admin-section-link" href="/admin/tours">Ver todos <ChevronRight size={15}/></a>
+            </div>
+            {tourCardsError && <div className="admin-tours-error"><CircleAlert size={15}/><span>{tourCardsError}</span></div>}
+            {tourCards.length ? <div className="admin-tours-grid">
+              {tourCards.slice(0, 6).map((tour) => (
+                <article className="admin-tour-card" key={tour.id}>
+                  <div className="admin-tour-thumb">
+                    {tour.mainImageUrl ? <img src={tour.mainImageUrl} alt={tour.name} loading="lazy" /> : <span className="admin-tour-thumb-empty"><Camera size={20}/></span>}
+                    <span className={`admin-tour-status ${tour.status}`}>{tourStatusLabel[tour.status] || tour.status}</span>
+                    {tour.featured && <span className="admin-tour-badge">Destacado</span>}
+                  </div>
+                  <div className="admin-tour-body">
+                    <strong>{tour.name}</strong>
+                    <small>{tour.destination}{tour.duration ? ` · ${tour.duration}` : ''}</small>
+                    <span className="admin-tour-price">{new Intl.NumberFormat('es-CR', { style: 'currency', currency: tour.currency }).format(tour.adultPrice)}</span>
+                  </div>
+                  <div className="admin-tour-actions">
+                    <a className="admin-tour-action" href="/#tours" title="Ver en landing"><Eye size={16}/> Ver</a>
+                    <a className="admin-tour-action" href="/admin/tours" title="Editar"><Edit3 size={16}/> Editar</a>
+                    <button className="admin-tour-action" disabled={busyTour === tour.id} onClick={() => toggleTour(tour)}>{tour.status === 'published' ? <ToggleRight size={16}/> : <ToggleLeft size={16}/>} {tour.status === 'published' ? 'Desactivar' : 'Activar'}{busyTour === tour.id && <Loader2 className="admin-spin" size={14}/>}</button>
+                    <button className={`admin-tour-action ${tour.featured ? 'active' : ''}`} disabled={busyTour === tour.id} onClick={() => toggleFeatured(tour)}><Star size={16}/> Destacar</button>
+                  </div>
+                </article>
+              ))}
+            </div> : <div className="admin-empty-compact"><MapPinned size={22}/><strong>Sin tours disponibles</strong><span>Crea el primer tour desde el módulo Tours para verlo aquí.</span></div>}
+          </section>}
 
           <section className="admin-quick-section">
             <div className="admin-section-heading"><div><span>ACCESOS RÁPIDOS</span><h2>Gestiona Capoy desde un solo lugar</h2></div></div>

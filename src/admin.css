@@ -8,3 +8,27 @@
 .admin-state{display:flex;align-items:center;gap:10px;color:#29513d;font-size:14px;min-height:56px;font-weight:500}
 
 .admin-kicker{display:block;font-size:11px;letter-spacing:1.5px;font-weight:700;color:#24734b;text-transform:uppercase;margin-bottom:6px}
+.admin-section-link{font-size:9px;color:#347759;text-decoration:none;display:flex;align-items:center;gap:3px}
+.admin-tours-section{margin-top:17px}
+.admin-tours-error{display:flex;align-items:center;gap:7px;background:#fff0ef;color:#9b3a2e;border:1px solid #f0d3cc;border-radius:10px;padding:10px 12px;font-size:10px;margin-bottom:12px}
+.admin-tours-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}
+.admin-tour-card{background:#fff;border:1px solid #e0e5e0;border-radius:14px;overflow:hidden;display:flex;flex-direction:column;min-width:0}
+.admin-tour-thumb{position:relative;height:140px;background:#eef2ef;overflow:hidden}
+.admin-tour-thumb img{width:100%;height:140px;object-fit:cover;display:block}
+.admin-tour-thumb-empty{display:flex;align-items:center;justify-content:center;height:140px;color:#9aa59e}
+.admin-tour-status{position:absolute;left:9px;top:9px;font-size:9px;font-weight:800;padding:4px 8px;border-radius:999px;background:rgba(255,255,255,.94);color:#3a4a41}
+.admin-tour-status.published{background:#e4f5e8;color:#256438}
+.admin-tour-status.inactive{background:#ecefee;color:#67736c}
+.admin-tour-status.draft{background:#fdf1cf;color:#8a6d12}
+.admin-tour-badge{position:absolute;right:9px;top:9px;background:#f5b91e;color:#fff;font-size:8px;font-weight:800;padding:4px 7px;border-radius:999px}
+.admin-tour-body{display:flex;flex-direction:column;gap:3px;padding:13px 14px 6px;flex:1}
+.admin-tour-body strong{font-size:12px;color:#1d3528}
+.admin-tour-body small{font-size:10px;color:#78847d}
+.admin-tour-price{margin-top:3px;font-size:12px;font-weight:800;color:#0b5a35}
+.admin-tour-actions{display:flex;flex-wrap:wrap;gap:4px;padding:8px 12px 12px;margin-top:auto}
+.admin-tour-action{display:inline-flex;align-items:center;gap:5px;border:1px solid #dbe2dc;background:#fff;color:#2c4d3b;border-radius:8px;padding:6px 9px;font-size:9px;font-weight:700;text-decoration:none;cursor:pointer}
+.admin-tour-action:hover{background:#f2f7f3}
+.admin-tour-action.active{background:#fbf3d9;border-color:#e6c96b;color:#7b5d00}
+.admin-tour-action:disabled{opacity:.55;cursor:not-allowed}
+@media(max-width:760px){.admin-tours-grid{grid-template-columns:repeat(2,1fr)}}
+@media(max-width:520px){.admin-tours-grid{grid-template-columns:1fr}}

@@ -62,6 +62,17 @@ function parseCapacity(value) {
   return { value: number };
 }
 
+function parseFeatured(value) {
+  return (value === true || value === 1 || value === '1' || value === 'true' || value === 'on') ? 1 : 0;
+}
+
+function parseSortOrder(value) {
+  if (value === '' || value === null || value === undefined) return { value: null };
+  const number = Number(value);
+  if (!Number.isInteger(number) || number < 0 || number > 999999) return { error: 'Orden inválido.' };
+  return { value: number };
+}
+
 function createPayload(body) {
   const name = cleanText(body?.name, 180);
   const destination = cleanText(body?.destination, 160);
@@ -75,6 +86,8 @@ function createPayload(body) {
   const adult = parseMoney(body?.adultPrice, 'Precio adulto');
   const child = parseMoney(body?.childPrice, 'Precio niño', true);
   const capacity = parseCapacity(body?.capacity);
+  const featured = parseFeatured(body?.featured);
+  const sortOrder = parseSortOrder(body?.sortOrder);
 
   if (name.length < 2 || destination.length < 2 || slug.length < 2) return { error: 'Nombre, destino y slug son obligatorios.' };
   if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug)) return { error: 'Slug inválido.' };
@@ -83,6 +96,7 @@ function createPayload(body) {
   if (adult.error) return adult;
   if (child.error) return child;
   if (capacity.error) return capacity;
+  if (sortOrder.error) return sortOrder;
   if (mainImageUrl) {
     try { new URL(mainImageUrl); } catch { return { error: 'URL de imagen inválida.' }; }
   }
@@ -90,7 +104,7 @@ function createPayload(body) {
   return {
     name, destination, slug, shortDescription, description, duration,
     adultPrice: adult.value, childPrice: child.value, currency,
-    capacity: capacity.value, mainImageUrl, status,
+    capacity: capacity.value, mainImageUrl, status, featured, sortOrder: sortOrder.value,
   };
 }
 
@@ -136,6 +150,8 @@ function mapPublicTour(row) {
     capacity: row.capacity === null ? null : Number(row.capacity),
     mainImageUrl: row.main_image_url,
     galleryImages: parseJsonField(row.gallery_watermarked) || [],
+    featured: Number(row.featured) === 1,
+    sortOrder: row.sort_order === null ? null : Number(row.sort_order),
     publishedAt: row.published_at,
     language: row.t_lang || 'es',
   };
@@ -169,14 +185,15 @@ export function registerTourRoutes({ app, pool, requireSession, sameOriginOnly, 
       const [rows] = await pool.query(
         `SELECT t.id, t.slug, t.name, t.destination, t.short_description, t.description, t.duration,
                 t.adult_price, t.child_price, t.currency, t.capacity, t.main_image_url,
-                t.published_at, t.gallery_watermarked,
+                t.published_at, t.gallery_watermarked, t.featured, t.sort_order,
                 tt.lang AS t_lang, tt.name AS t_name, tt.destination AS t_destination,
                 tt.short_description AS t_short_description, tt.description AS t_description,
                 tt.duration AS t_duration
          FROM tours t
          LEFT JOIN tour_translations tt ON tt.tour_id = t.id AND tt.lang = ?
          WHERE t.status = 'published'
-         ORDER BY COALESCE(t.published_at, t.created_at) DESC, t.id DESC`,
+         ORDER BY t.featured DESC, t.sort_order IS NULL ASC, t.sort_order ASC,
+                  COALESCE(t.published_at, t.created_at) DESC, t.id DESC`,
         [lang],
       );
       res.json({ ok: true, total: rows.length, language: lang, tours: rows.map(mapPublicTour) });
@@ -213,8 +230,8 @@ export function registerTourRoutes({ app, pool, requireSession, sameOriginOnly, 
           SUM(status = 'inactive') AS inactiveCount
           FROM tours`),
         pool.execute(`SELECT COUNT(*) AS total FROM tours ${clause}`, params),
-        pool.execute(`SELECT id, slug, name, destination, short_description, description, duration, adult_price, child_price, currency, capacity, main_image_url, status, published_at, created_at, updated_at, gallery_watermarked
-          FROM tours ${clause} ORDER BY created_at DESC LIMIT ? OFFSET ?`, [...params, limit, offset]),
+        pool.execute(`SELECT id, slug, name, destination, short_description, description, duration, adult_price, child_price, currency, capacity, main_image_url, status, featured, sort_order, published_at, created_at, updated_at, gallery_watermarked
+          FROM tours ${clause} ORDER BY featured DESC, sort_order IS NULL ASC, sort_order ASC, created_at DESC LIMIT ? OFFSET ?`, [...params, limit, offset]),
       ]);
       const summary = summaryRows[0] || {};
       const total = Number(countRows[0]?.total || 0);
@@ -250,7 +267,7 @@ export function registerTourRoutes({ app, pool, requireSession, sameOriginOnly, 
           shortDescription: row.short_description, description: row.description, duration: row.duration,
           adultPrice: Number(row.adult_price), childPrice: row.child_price === null ? null : Number(row.child_price),
           currency: row.currency, capacity: row.capacity === null ? null : Number(row.capacity), mainImageUrl: row.main_image_url,
-          status: row.status, publishedAt: row.published_at, createdAt: row.created_at, updatedAt: row.updated_at,
+          status: row.status, featured: Number(row.featured) === 1, sortOrder: row.sort_order === null ? null : Number(row.sort_order), publishedAt: row.published_at, createdAt: row.created_at, updatedAt: row.updated_at,
           galleryImages: parseJsonField(row.gallery_watermarked) || [],
           translations: translationsMap.get(Number(row.id)) || {},
         })),
@@ -278,9 +295,9 @@ export function registerTourRoutes({ app, pool, requireSession, sameOriginOnly, 
     try {
       const publishedAt = payload.status === 'published' ? new Date() : null;
       const [result] = await pool.execute(`INSERT INTO tours
-        (slug, name, destination, short_description, description, duration, adult_price, child_price, currency, capacity, main_image_url, status, published_at, created_by_admin_id, updated_by_admin_id)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [payload.slug, payload.name, payload.destination, payload.shortDescription, payload.description, payload.duration, payload.adultPrice, payload.childPrice, payload.currency, payload.capacity, payload.mainImageUrl, payload.status, publishedAt, req.admin.id, req.admin.id]);
+        (slug, name, destination, short_description, description, duration, adult_price, child_price, currency, capacity, main_image_url, status, featured, sort_order, published_at, created_by_admin_id, updated_by_admin_id)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [payload.slug, payload.name, payload.destination, payload.shortDescription, payload.description, payload.duration, payload.adultPrice, payload.childPrice, payload.currency, payload.capacity, payload.mainImageUrl, payload.status, payload.featured, payload.sortOrder, publishedAt, req.admin.id, req.admin.id]);
       await audit(req, 'tour_created', { userId: req.admin.id, email: req.admin.email, metadata: { tourId: result.insertId, slug: payload.slug } });
 
       // Persist translations (ES is mandatory; others optional). Keep `tours` columns in sync with ES.
@@ -358,8 +375,8 @@ export function registerTourRoutes({ app, pool, requireSession, sameOriginOnly, 
       if (!existingRows.length) return res.status(404).json({ error: 'Tour no encontrado.' });
       const existing = existingRows[0];
       const publishedAt = payload.status === 'published' ? (existing.published_at || new Date()) : existing.published_at;
-      await pool.execute(`UPDATE tours SET slug=?, name=?, destination=?, short_description=?, description=?, duration=?, adult_price=?, child_price=?, currency=?, capacity=?, main_image_url=?, status=?, published_at=?, updated_by_admin_id=? WHERE id=?`,
-        [payload.slug, payload.name, payload.destination, payload.shortDescription, payload.description, payload.duration, payload.adultPrice, payload.childPrice, payload.currency, payload.capacity, payload.mainImageUrl, payload.status, publishedAt, req.admin.id, id]);
+      await pool.execute(`UPDATE tours SET slug=?, name=?, destination=?, short_description=?, description=?, duration=?, adult_price=?, child_price=?, currency=?, capacity=?, main_image_url=?, status=?, featured=?, sort_order=?, published_at=?, updated_by_admin_id=? WHERE id=?`,
+        [payload.slug, payload.name, payload.destination, payload.shortDescription, payload.description, payload.duration, payload.adultPrice, payload.childPrice, payload.currency, payload.capacity, payload.mainImageUrl, payload.status, payload.featured, payload.sortOrder, publishedAt, req.admin.id, id]);
       await audit(req, 'tour_updated', { userId: req.admin.id, email: req.admin.email, metadata: { tourId: id, status: payload.status } });
 
       // Persist translations if provided (ES keeps `tours` columns in sync).
@@ -388,6 +405,72 @@ export function registerTourRoutes({ app, pool, requireSession, sameOriginOnly, 
       if (error?.code === 'ER_DUP_ENTRY') return res.status(409).json({ error: 'Ya existe un tour con ese slug.' });
       console.error('tour_update_failed', error.message);
       res.status(503).json({ error: 'No fue posible actualizar el tour.' });
+    }
+  });
+
+  app.patch('/api/admin/tours/:id/state', sameOriginOnly, requireSession, async (req, res) => {
+    const id = Number.parseInt(req.params.id, 10);
+    if (!Number.isInteger(id) || id < 1) return res.status(400).json({ error: 'Tour inválido.' });
+    const changes = {};
+    if (req.body?.featured !== undefined) changes.featured = parseFeatured(req.body.featured);
+    if (req.body?.sortOrder !== undefined) {
+      const so = parseSortOrder(req.body.sortOrder);
+      if (so.error) return res.status(400).json({ error: so.error });
+      changes.sort_order = so.value;
+    }
+    if (req.body?.status !== undefined) {
+      const status = cleanText(req.body.status, 32);
+      if (!TOUR_STATUSES.has(status)) return res.status(400).json({ error: 'Estado de tour inválido.' });
+      changes.status = status;
+    }
+    if (!Object.keys(changes).length) return res.status(400).json({ error: 'No se indicaron cambios.' });
+    try {
+      const [existingRows] = await pool.execute('SELECT status, published_at FROM tours WHERE id = ? LIMIT 1', [id]);
+      if (!existingRows.length) return res.status(404).json({ error: 'Tour no encontrado.' });
+      const existing = existingRows[0];
+      const sets = [];
+      const params = [];
+      for (const [column, value] of Object.entries(changes)) {
+        sets.push(`${column} = ?`);
+        params.push(value);
+      }
+      if (changes.status === 'published' && existing.status !== 'published') {
+        sets.push('published_at = ?');
+        params.push(new Date());
+      }
+      params.push(id);
+      await pool.execute(`UPDATE tours SET ${sets.join(', ')} WHERE id = ?`, params);
+      await audit(req, 'tour_state_updated', { userId: req.admin.id, email: req.admin.email, metadata: { tourId: id, changes } });
+      const [updatedRows] = await pool.execute('SELECT id, featured, sort_order, status FROM tours WHERE id = ? LIMIT 1', [id]);
+      const updated = updatedRows[0];
+      if (!updated) return res.status(404).json({ error: 'Tour no encontrado.' });
+      res.json({
+        ok: true,
+        tour: {
+          id: Number(updated.id),
+          featured: Number(updated.featured) === 1,
+          sortOrder: updated.sort_order === null ? null : Number(updated.sort_order),
+          status: updated.status,
+        },
+      });
+    } catch (error) {
+      console.error('tour_state_update_failed', error.message);
+      res.status(503).json({ error: 'No fue posible actualizar el estado del tour.' });
+    }
+  });
+
+  app.delete('/api/admin/tours/:id', sameOriginOnly, requireSession, requireOwner, async (req, res) => {
+    const id = Number.parseInt(req.params.id, 10);
+    if (!Number.isInteger(id) || id < 1) return res.status(400).json({ error: 'Tour inválido.' });
+    try {
+      const [rows] = await pool.execute('SELECT id, slug, name FROM tours WHERE id = ? LIMIT 1', [id]);
+      if (!rows.length) return res.status(404).json({ error: 'Tour no encontrado.' });
+      await pool.execute('DELETE FROM tours WHERE id = ?', [id]);
+      await audit(req, 'tour_deleted', { userId: req.admin.id, email: req.admin.email, metadata: { tourId: id, slug: rows[0].slug, name: rows[0].name } });
+      res.json({ ok: true });
+    } catch (error) {
+      console.error('tour_delete_failed', error.message);
+      res.status(503).json({ error: 'No fue posible eliminar el tour.' });
     }
   });
 

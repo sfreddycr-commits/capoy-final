@@ -14,6 +14,7 @@ type PublicTour = {
   capacity?: number | null;
   mainImageUrl?: string | null;
   galleryImages?: string[];
+  featured?: boolean;
   language?: string;
 };
 
@@ -58,6 +59,10 @@ function buildTourCard(tour: PublicTour) {
 
   const badge = textElement('span', 'badge', tour.duration ? `◷ ${tour.duration}` : 'Capoy');
   image.appendChild(badge);
+
+  if (tour.featured) {
+    image.appendChild(textElement('span', 'tour-badge-featured', '★'));
+  }
 
   const favorite = document.createElement('button');
   favorite.type = 'button';

@@ -28,3 +28,6 @@
 .tour-translations-tabs{display:flex;gap:6px}
 .tour-translations-tabs button{font-family:inherit;font-size:12px;font-weight:700;border:1px solid #c9d8ce;background:#fff;color:#355a40;padding:6px 14px;border-radius:6px;cursor:pointer}
 .tour-translations-tabs button.active{background:var(--green);color:#fff;border-color:var(--green)}
+.tour-status.featured{background:#f5b91e;color:#fff}
+.tour-card-delete{margin-top:10px;border:0;background:#fbeeee;color:#a03c2e;border-radius:8px;padding:8px 10px;display:flex;align-items:center;gap:6px;font-size:10px;font-weight:700;cursor:pointer}
+.tour-card-delete:hover{background:#f6dddd}
