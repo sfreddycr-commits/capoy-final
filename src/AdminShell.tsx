@@ -32,7 +32,7 @@ const NAV_ITEMS = [
   { label: 'Proveedores', href: '/admin/proveedores', icon: Handshake },
   { label: 'Flota', href: '/admin/flota', icon: BusFront },
   { label: 'Reseñas', href: '/admin/resenas', icon: Star },
-  { label: 'CMS', href: '/admin/cms', icon: PanelsTopLeft },
+  { label: 'Landing', href: '/admin/cms', icon: PanelsTopLeft },
   { label: 'Empresa', href: '/admin/empresa', icon: Building2 },
   { label: 'Seguridad', href: '/admin/seguridad', icon: ShieldCheck },
   { label: 'Usuarios', href: '/admin/usuarios', icon: UserRoundCog },
