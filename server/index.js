@@ -516,6 +516,8 @@ app.get('/api/admin/dashboard', requireSession, async (_req, res) => {
 registerReservationRoutes({ app, pool, requireSession, sameOriginOnly, audit });
 import { registerCompanyPublicRoutes } from './company.js';
 registerCompanyPublicRoutes({ app, pool });
+import { registerLandingRoutes } from './landing.js';
+registerLandingRoutes({ app, pool });
 
 // Boutique status page (public, no auth) — lightweight read-only.
 app.get('/api/public/status', async (_req, res) => {
