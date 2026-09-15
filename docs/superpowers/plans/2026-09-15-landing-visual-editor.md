@@ -149,7 +149,7 @@ docker exec capoy-final-6wsges.1.qm5u3jy0bed2bzqpme3doxf0w sh -c 'mysql -uroot -
 docker exec capoy-final-6wsges.1.qm5u3jy0bed2bzqpme3doxf0w sh -c 'mysql -uroot -p"$MYSQL_ROOT_PASSWORD" capoy_final -e "SELECT site_section, breakpoint, COUNT(*) FROM landing_components GROUP BY site_section, breakpoint;"'
 ```
 
-Expected: header/desktop=8, header/tablet=8, header/mobile=8, hero (×3)=18, trust_strip (×3×4)=36 → total ~78 rows.
+Expected (post-Task-2 amend): `header=9/9/9, hero=6/6/6, trust_strip=4/4/4` = **57 rows** (brief originally said 78; actual DOM enumeration gave 19 slots × 3 breakpoints).
 
 - [ ] **Step 4: Commit**
 
