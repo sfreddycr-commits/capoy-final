@@ -177,6 +177,8 @@ const LANDING_FLAT_DEFAULTS = {
   footer_copy: 'Tours locales, experiencias auténticas y recuerdos que duran para siempre.',
   promo_text: '',
   promo_enabled: 'false',
+  section_visible: '{"trust":true,"tours":true,"why":true,"destinations":true,"how":true,"testimonials":true,"faq":true,"cta":true}',
+  section_order: '["trust","tours","why","destinations","how","testimonials","faq","cta"]',
   seo_title: 'Capoy Costa Rica | Tours y experiencias auténticas',
   seo_description: 'Reservas fáciles, guías locales y experiencias inigualables en los lugares más increíbles del país. Tours, destinos y aventuras inolvidables.',
 };
