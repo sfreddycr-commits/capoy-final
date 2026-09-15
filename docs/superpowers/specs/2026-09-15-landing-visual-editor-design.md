@@ -52,8 +52,13 @@ Descartadas:
 ## 4. Modelo de datos (SQL)
 
 ```sql
-ALTER TABLE admin_users ADD COLUMN role ENUM('owner','staff') NOT NULL DEFAULT 'staff';
-UPDATE admin_users SET role='owner' WHERE id=1;
+-- (No DDL change required for admin_users.)
+-- admin_users already has `role VARCHAR(40) NOT NULL DEFAULT 'admin'` from
+-- migration 0001. Live row id=1 holds 'owner', id=2 holds 'admin'. The
+-- editor's owner-gate uses `req.user.role === 'owner'` (matches the existing
+-- RBAC in server/users.js:29). Forcing ENUM('owner','staff') here would
+-- either crash POST /api/admin/users or silently coerce id=2 to ''. Do NOT
+-- modify the role column.
 
 CREATE TABLE landing_components (
   id            BIGINT UNSIGNED PRIMARY KEY AUTO_INCREMENT,
@@ -69,10 +74,19 @@ CREATE TABLE landing_components (
   props_json    JSON NOT NULL,                         -- publicado (text, src, alt, href)
   draft_props_json JSON NULL,                          -- borrador (auto-guardado)
   updated_by    BIGINT UNSIGNED NULL,
-  updated_at    TIMESTAMP NULL,
+  updated_at    TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   published_at  TIMESTAMP NULL,
   UNIQUE KEY uniq_slot_bp (site_section, slot, breakpoint),
-  KEY idx_section (site_section)
+  KEY idx_section (site_section, slot)
+);
+
+CREATE TABLE landing_versions (
+  id            BIGINT UNSIGNED PRIMARY KEY AUTO_INCREMENT,
+  site_section  ENUM('header','hero','trust_strip') NOT NULL,
+  snapshot_json JSON NOT NULL,                         -- snapshot completo de landing_components al publicar
+  published_by  BIGINT UNSIGNED NULL,
+  published_at  TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  KEY idx_section_time (site_section, published_at)
 );
 ```
 
