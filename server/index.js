@@ -8,6 +8,7 @@ import { promisify } from 'node:util';
 import { fileURLToPath } from 'node:url';
 import { registerReservationRoutes } from './reservations.js';
 import { verifyAndAdvance as verifyTwoFactor, decryptSecret as decryptTotpSecret } from './twofactor.js';
+import { registerLandingRoutes } from './landing.js';
 import {
   compressionMiddleware,
   securityHeadersMiddleware,
@@ -18,6 +19,7 @@ import {
 } from './middleware.js';
 
 const app = express();
+app.get("/api/debug-test", (req, res) => res.json({ ok: true, debug: true }));
 const port = Number(process.env.PORT || 3000);
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const dist = path.resolve(__dirname, '../dist');
@@ -328,6 +330,7 @@ function adminOnly(req, res, next) {
   if (req.path.startsWith('/api/admin')) return sensitiveAdminRateLimiter(req, res, next);
   next();
 }
+registerLandingRoutes({ app, pool });
 app.use(authOnly);
 app.use(adminOnly);
 
@@ -516,8 +519,6 @@ app.get('/api/admin/dashboard', requireSession, async (_req, res) => {
 registerReservationRoutes({ app, pool, requireSession, sameOriginOnly, audit });
 import { registerCompanyPublicRoutes } from './company.js';
 registerCompanyPublicRoutes({ app, pool });
-import { registerLandingRoutes } from './landing.js';
-registerLandingRoutes({ app, pool });
 
 // Boutique status page (public, no auth) — lightweight read-only.
 app.get('/api/public/status', async (_req, res) => {

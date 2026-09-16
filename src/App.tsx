@@ -1,5 +1,5 @@
 import { Fragment, useEffect, useMemo, useState } from 'react';
-import type { LucideIcon } from 'lucide-react';
+import type { CSSProperties, LucideIcon } from 'lucide-react';
 import { ArrowLeft, CalendarDays, Camera, CheckCircle2, ChevronRight, Eye, EyeOff, Headphones, Leaf, LockKeyhole, Mail, MapPin, Phone, ShieldCheck, Star, Users, Van } from 'lucide-react';
 
 const ICON_MAP: Record<string, LucideIcon> = {
@@ -75,6 +75,107 @@ const DEFAULT_FAQ_ITEMS: FaqItem[] = [
 ];
 const SECTION_ORDER_DEFAULT = ['trust', 'tours', 'why', 'destinations', 'how', 'testimonials', 'faq', 'cta'];
 
+type Breakpoint = 'desktop' | 'tablet' | 'mobile';
+
+interface LandingComponentItem {
+  id: number;
+  slot: string;
+  position: { x: number; y: number; w: number | null; h: number | null; z: number };
+  hidden: boolean;
+  props: Record<string, unknown>;
+}
+
+interface LandingComponentsPayload {
+  header: Record<Breakpoint, LandingComponentItem[]>;
+  hero: Record<Breakpoint, LandingComponentItem[]>;
+  trust_strip: Record<Breakpoint, LandingComponentItem[]>;
+}
+
+function breakpointFromWidth(w: number): Breakpoint {
+  if (w >= 1024) return 'desktop';
+  if (w >= 600) return 'tablet';
+  return 'mobile';
+}
+
+function cmpBaseStyle(item: LandingComponentItem): CSSProperties {
+  const fixed = (item.props as Record<string, unknown>).positionFixed === true;
+  return {
+    position: fixed ? 'fixed' : 'absolute',
+    left: `${item.position.x}px`,
+    top: `${item.position.y}px`,
+    width: item.position.w == null ? 'auto' : `${item.position.w}px`,
+    height: item.position.h == null ? 'auto' : `${item.position.h}px`,
+    zIndex: item.position.z,
+  };
+}
+
+function renderHeaderComponents(items: LandingComponentItem[]) {
+  const visible = items.filter((c) => !c.hidden);
+  const menuLinks = visible
+    .filter((c) => c.slot.startsWith('menu_link:'))
+    .sort((a, b) => a.position.x - b.position.x);
+  return <div className="landing-section landing-section--header">
+    {visible.filter((c) => !c.slot.startsWith('menu_link:')).map((c) => {
+      const props = c.props as Record<string, string>;
+      if (c.slot === 'logo') {
+        return <a key={c.id} className="brand" href={props.href || '#inicio'} aria-label={props.alt || 'Capoy Costa Rica'} style={cmpBaseStyle(c)} data-cmp={c.slot} data-cmp-id={c.id}>
+          <div className="brand-mark">◒</div>
+          <div><strong>{props.text}</strong><span>{props.alt || 'Costa Rica'}</span></div>
+        </a>;
+      }
+      if (c.slot === 'login_btn') {
+        return <a key={c.id} className="admin-login-link" href={props.href || '/admin/login'} data-admin-login aria-label={props.text || 'Iniciar sesión'} style={cmpBaseStyle(c)} data-cmp={c.slot} data-cmp-id={c.id}>{props.text || 'Iniciar sesión'}</a>;
+      }
+      if (c.slot === 'phone') {
+        return <a key={c.id} className="phone" href={props.href || '#'} style={cmpBaseStyle(c)} data-cmp={c.slot} data-cmp-id={c.id}><Phone size={16}/>{props.text}</a>;
+      }
+      if (c.slot === 'reserve_btn') {
+        return <a key={c.id} className="reserve-btn" href={props.href || '#tours'} style={cmpBaseStyle(c)} data-cmp={c.slot} data-cmp-id={c.id}><CalendarDays size={17}/>{props.text || 'Reservar ahora'}</a>;
+      }
+      return null;
+    })}
+    {menuLinks.map((c, idx) => {
+      const props = c.props as Record<string, string>;
+      return <a key={c.id} className="nav-link" href={props.href || '#'} style={cmpBaseStyle(c)} data-cmp={c.slot} data-cmp-id={c.id} data-nav-first={idx === 0 ? 'true' : undefined}>{props.text}</a>;
+    })}
+  </div>;
+}
+
+function renderHeroComponents(items: LandingComponentItem[]) {
+  const visible = items.filter((c) => !c.hidden);
+  const bg = visible.find((c) => c.slot === 'bg_image');
+  const eyebrow = visible.find((c) => c.slot === 'eyebrow');
+  const title = visible.find((c) => c.slot === 'title');
+  const lead = visible.find((c) => c.slot === 'lead');
+  const ctaPrimary = visible.find((c) => c.slot === 'cta_primary');
+  const ctaSecondary = visible.find((c) => c.slot === 'cta_secondary');
+  return <div className="landing-section landing-section--hero" id="inicio">
+    {bg && <div className="hero-bg-image" data-cmp={bg.slot} data-cmp-id={bg.id} style={{ position: 'absolute', left: `${bg.position.x}px`, top: `${bg.position.y}px`, width: `${bg.position.w ?? 0}px`, height: `${bg.position.h ?? 0}px`, backgroundImage: `url(${(bg.props as Record<string, string>).src})`, backgroundSize: 'cover', backgroundPosition: 'center 45%', zIndex: bg.position.z }} role="img" aria-label={(bg.props as Record<string, string>).alt || ''} />}
+    <div className="hero-overlay" aria-hidden="true" />
+    {eyebrow && <p className="script" style={cmpBaseStyle(eyebrow)} data-cmp={eyebrow.slot} data-cmp-id={eyebrow.id}>{(eyebrow.props as Record<string, string>).text}</p>}
+    {title && <h1 style={cmpBaseStyle(title)} data-cmp={title.slot} data-cmp-id={title.id} dangerouslySetInnerHTML={{ __html: (title.props as Record<string, string>).text || '' }} />}
+    {lead && <p className="lead" style={cmpBaseStyle(lead)} data-cmp={lead.slot} data-cmp-id={lead.id}>{(lead.props as Record<string, string>).text}</p>}
+    {ctaPrimary && <a className="primary-ghost" href={(ctaPrimary.props as Record<string, string>).href || '#tours'} style={cmpBaseStyle(ctaPrimary)} data-cmp={ctaPrimary.slot} data-cmp-id={ctaPrimary.id}>{(ctaPrimary.props as Record<string, string>).text || 'Ver tours'} <ChevronRight size={18}/></a>}
+    {ctaSecondary && <a className="secondary-btn" href={(ctaSecondary.props as Record<string, string>).href || '#como-funciona'} style={cmpBaseStyle(ctaSecondary)} data-cmp={ctaSecondary.slot} data-cmp-id={ctaSecondary.id}>{(ctaSecondary.props as Record<string, string>).text || 'Planear mi viaje'}</a>}
+  </div>;
+}
+
+function renderTrustStripComponents(items: LandingComponentItem[]) {
+  const visible = items
+    .filter((c) => !c.hidden)
+    .sort((a, b) => a.slot.localeCompare(b.slot, undefined, { numeric: true }));
+  return <div className="landing-section landing-section--trust_strip">
+    {visible.map((c) => {
+      const props = c.props as Record<string, string>;
+      const Icon = ICON_MAP[props.icon] || CheckCircle2;
+      return <div key={c.id} className="landing-trust-cell" style={cmpBaseStyle(c)} data-cmp={c.slot} data-cmp-id={c.id}>
+        <Icon/>
+        <span><b>{props.title}</b>{props.text}</span>
+      </div>;
+    })}
+  </div>;
+}
+
 const DEFAULT_LANDING: Landing = {
   hero: { eyebrow: 'Explora', title: 'Costa Rica<br/>como nunca<br/>antes', lead: 'Reservas fáciles, guías locales y experiencias inigualables en los lugares más increíbles del país.', primaryCta: 'Ver tours', secondaryCta: 'Planear mi viaje ✈', image: '', stats: DEFAULT_HERO_STATS },
   trust: { items: DEFAULT_TRUST_ITEMS },
@@ -121,6 +222,11 @@ function renderLandingSection(key: string, landing: Landing) {
 
 function PublicLanding() {
   const [landing, setLanding] = useState<Landing>(defaultLanding);
+  const [components, setComponents] = useState<LandingComponentsPayload | null>(null);
+  const [bp, setBp] = useState<Breakpoint>(() => {
+    if (typeof window === 'undefined') return 'desktop';
+    return breakpointFromWidth(window.innerWidth);
+  });
 
   useEffect(() => {
     let active = true;
@@ -132,6 +238,27 @@ function PublicLanding() {
       .then((data) => { if (active && data?.landing) setLanding(data.landing); })
       .catch(() => { /* keep defaults */ });
     return () => { active = false; };
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+    fetch('/api/public/landing/page', { credentials: 'same-origin' })
+      .then(async (response) => {
+        if (!response.ok) throw new Error('components');
+        const data = await response.json();
+        if (!active) return;
+        if (data?.sections?.header && data?.sections?.hero && data?.sections?.trust_strip) {
+          setComponents(data.sections as LandingComponentsPayload);
+        }
+      })
+      .catch(() => { /* keep null → render static */ });
+    return () => { active = false; };
+  }, []);
+
+  useEffect(() => {
+    function handle() { setBp(breakpointFromWidth(window.innerWidth)); }
+    window.addEventListener('resize', handle);
+    return () => window.removeEventListener('resize', handle);
   }, []);
 
   useEffect(() => {
@@ -149,35 +276,49 @@ function PublicLanding() {
     () => landing.sections.order.filter((key) => landing.sections.visible[key] !== false),
     [landing]
   );
+  const legacyVisibleOrder = useMemo(
+    () => visibleOrder.filter((key) => key !== 'trust'),
+    [visibleOrder]
+  );
 
   const heroStyle = landing.hero.image ? { backgroundImage: `url(${landing.hero.image})` } : undefined;
   const phoneHref = `tel:${landing.contact.phone.replace(/[^\d+]/g, '')}`;
 
+  const useComponentsView = components !== null;
+
   return <div className="site-shell">
     {landing.promo.enabled && landing.promo.text.trim() !== '' && <div className="promo-bar"><p>{landing.promo.text}</p></div>}
 
-    <section className="hero" id="inicio" style={heroStyle}>
-      <div className="hero-overlay" />
-      <header className="topbar container">
-        <a className="brand" href="#inicio" aria-label="Capoy Costa Rica"><div className="brand-mark">◒</div><div><strong>Capoy</strong><span>Costa Rica</span></div></a>
-        <nav className="nav" aria-label="Navegación principal">
-          {['Inicio', 'Tours', 'Destinos', 'FAQ', 'Contacto'].map((item) => <a key={item} href={`#${item.toLowerCase().replace('í', 'i')}`}>{item}</a>)}
-        </nav>
-        <div className="nav-actions"><a className="admin-login-link" href="/admin/login" data-admin-login aria-label="Iniciar sesión en el panel administrativo">Iniciar sesión</a><a className="phone" href={phoneHref}><Phone size={16}/>{landing.contact.phone}</a><a className="reserve-btn" href="#tours"><CalendarDays size={17}/>Reservar ahora</a></div>
-      </header>
-
-      <div className="container hero-content">
-        <div className="hero-copy">
-          <p className="script">{landing.hero.eyebrow}</p>
-          <h1 dangerouslySetInnerHTML={{ __html: landing.hero.title }} />
-          <p className="lead">{landing.hero.lead}</p>
-          <div className="hero-buttons"><a className="primary-ghost" href="#tours">{landing.hero.primaryCta} <ChevronRight size={18}/></a><a className="secondary-btn" href="#como-funciona">{landing.hero.secondaryCta}</a></div>
-        </div>
-        
+    {useComponentsView && components ? (
+      <div className="landing-components-root">
+        {renderHeaderComponents(components.header[bp])}
+        {renderHeroComponents(components.hero[bp])}
+        {renderTrustStripComponents(components.trust_strip[bp])}
       </div>
-    </section>
+    ) : (
+      <section className="hero" id="inicio" style={heroStyle}>
+        <div className="hero-overlay" />
+        <header className="topbar container">
+          <a className="brand" href="#inicio" aria-label="Capoy Costa Rica"><div className="brand-mark">◒</div><div><strong>Capoy</strong><span>Costa Rica</span></div></a>
+          <nav className="nav" aria-label="Navegación principal">
+            {['Inicio', 'Tours', 'Destinos', 'FAQ', 'Contacto'].map((item) => <a key={item} href={`#${item.toLowerCase().replace('í', 'i')}`}>{item}</a>)}
+          </nav>
+          <div className="nav-actions"><a className="admin-login-link" href="/admin/login" data-admin-login aria-label="Iniciar sesión en el panel administrativo">Iniciar sesión</a><a className="phone" href={phoneHref}><Phone size={16}/>{landing.contact.phone}</a><a className="reserve-btn" href="#tours"><CalendarDays size={17}/>Reservar ahora</a></div>
+        </header>
 
-    <main>{visibleOrder.map((key) => <Fragment key={key}>{renderLandingSection(key, landing)}</Fragment>)}</main>
+        <div className="container hero-content">
+          <div className="hero-copy">
+            <p className="script">{landing.hero.eyebrow}</p>
+            <h1 dangerouslySetInnerHTML={{ __html: landing.hero.title }} />
+            <p className="lead">{landing.hero.lead}</p>
+            <div className="hero-buttons"><a className="primary-ghost" href="#tours">{landing.hero.primaryCta} <ChevronRight size={18}/></a><a className="secondary-btn" href="#como-funciona">{landing.hero.secondaryCta}</a></div>
+          </div>
+          
+        </div>
+      </section>
+    )}
+
+    <main>{(useComponentsView ? legacyVisibleOrder : visibleOrder).map((key) => <Fragment key={key}>{renderLandingSection(key, landing)}</Fragment>)}</main>
 
     <footer className="footer"><div className="container footer-grid"><div><a className="brand footer-brand" href="#inicio"><div className="brand-mark">◒</div><div><strong>Capoy</strong><span>Costa Rica</span></div></a><p>{landing.footer.copy}</p><div className="socials">● ● ● ● ●</div></div><div><b>Enlaces rápidos</b><a href="#inicio">Inicio</a><a href="#tours">Tours</a><a href="#destinos">Destinos</a></div><div><b>Información</b><a href="#faq">Sobre nosotros</a><a href="#faq">FAQ</a><a href="#faq">Términos y condiciones</a><a href="#faq">Política de privacidad</a></div><div><b>Contacto</b><span>{landing.contact.phone}</span><span>{landing.contact.email}</span><span>{landing.contact.location}</span></div><div><b>Suscríbete a nuestras aventuras</b><p>Recibe ofertas exclusivas y novedades en tu correo.</p><form onSubmit={(e) => e.preventDefault()}><input type="email" placeholder="Tu correo electrónico" aria-label="Tu correo electrónico"/><button>Suscribirme</button></form></div></div><div className="container copyright">© 2026 Capoy Costa Rica. Todos los derechos reservados.<span>Diseñado con ❤ en Costa Rica</span></div></footer>
   </div>;
