@@ -31,3 +31,11 @@
 .tour-status.featured{background:#f5b91e;color:#fff}
 .tour-card-delete{margin-top:10px;border:0;background:#fbeeee;color:#a03c2e;border-radius:8px;padding:8px 10px;display:flex;align-items:center;gap:6px;font-size:10px;font-weight:700;cursor:pointer}
 .tour-card-delete:hover{background:#f6dddd}
+.tour-card-actions{margin-top:12px;display:flex;gap:8px}
+.tour-status-toggle{flex:1;border:0;border-radius:8px;padding:9px 10px;font-size:11px;font-weight:800;display:flex;align-items:center;justify-content:center;gap:6px;cursor:pointer;transition:transform .15s ease,box-shadow .15s ease}
+.tour-status-toggle:hover{transform:translateY(-1px);box-shadow:0 6px 14px rgba(0,0,0,.12)}
+.tour-status-toggle.publish{background:#0b5a35;color:#fff}
+.tour-status-toggle.publish:hover{background:#0a4f2f}
+.tour-status-toggle.draft{background:#fff4ce;color:#7b5d00;border:1px solid #e6d27a}
+.tour-status-toggle.draft:hover{background:#fff0b8}
+@media(max-width:680px){.tour-card-actions{flex-direction:column}}

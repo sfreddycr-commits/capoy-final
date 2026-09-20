@@ -45,6 +45,20 @@ export function ToursPage(){
 
   async function deleteTour(tour:Tour){if(!window.confirm(`¿Eliminar definitivamente el tour «${tour.name}»? Las reservas y reseñas vinculadas se quedarán sin tour (no se borran).`))return;setSaveError('');try{const response=await fetch(`/api/admin/tours/${tour.id}`,{method:'DELETE',credentials:'same-origin'});const body=await response.json().catch(()=>({}));if(!response.ok)throw new Error(body.error||'No fue posible eliminar el tour.');await load()}catch(e){setError(e instanceof Error?e.message:'No fue posible eliminar el tour.')}}
 
+  async function toggleStatus(tour:Tour){
+    const nextStatus:Record<string,string>={published:'draft',draft:'published',inactive:'published'};
+    const target=nextStatus[tour.status]||'published';
+    const verb=target==='published'?'publicar':'pasar a borrador';
+    if(!window.confirm(`¿${verb.charAt(0).toUpperCase()+verb.slice(1)} el tour «${tour.name}»?`)){return;}
+    setSaveError('');
+    try{
+      const response=await fetch(`/api/admin/tours/${tour.id}/state`,{method:'PATCH',headers:{'Content-Type':'application/json'},credentials:'same-origin',body:JSON.stringify({status:target})});
+      const body=await response.json().catch(()=>({}));
+      if(!response.ok)throw new Error(body.error||`No fue posible ${verb} el tour.`);
+      await load();
+    }catch(e){setError(e instanceof Error?e.message:`No fue posible ${verb} el tour.`)}
+  }
+
   function handleMainFileChange(e:ChangeEvent<HTMLInputElement>){const file=e.target.files?.[0];if(!file)return;if(!file.type.startsWith('image/')){setSaveError('El archivo debe ser una imagen.');return}if(file.size>5*1024*1024){setSaveError('La imagen no debe superar 5 MB.');return}setPreviewUrl(URL.createObjectURL(file));void uploadMainImage(file)}
   function handleGalleryFileChange(index:number,e:ChangeEvent<HTMLInputElement>){const file=e.target.files?.[0];if(file)void uploadGallerySlot(index,file)}
 
@@ -55,7 +69,14 @@ export function ToursPage(){
   {data&&<div className="tours-kpis"><article><span>Total</span><strong>{data.summary.total}</strong><small>Experiencias</small></article><article><span>Publicados</span><strong>{data.summary.published}</strong><small>Visibles para operación</small></article><article><span>Borradores</span><strong>{data.summary.draft}</strong><small>En preparación</small></article><article><span>Inactivos</span><strong>{data.summary.inactive}</strong><small>Fuera de venta</small></article></div>}
   <div className="tours-toolbar"><form onSubmit={e=>{e.preventDefault();load()}}><Search size={17}/><input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Buscar nombre, destino o slug"/><button>Buscar</button></form><select value={status} onChange={e=>{setStatus(e.target.value);setTimeout(load,0)}}><option value="all">Todos los estados</option>{statuses.map(([v,l])=><option key={v} value={v}>{l}</option>)}</select></div>
   {loading&&<div className="tours-state"><Loader2 className="spin"/> Cargando tours…</div>}{!loading&&error&&<div className="tours-state error">{error}</div>}{!loading&&!error&&data?.tours.length===0&&<div className="tours-empty"><ClipboardList size={36}/><h2>No hay tours todavía</h2><p>El catálogo está listo y conectado a MySQL.</p><button onClick={openCreate}><Plus size={17}/> Crear primer tour</button></div>}
-  {!loading&&!error&&data&&data.tours.length>0&&<div className="tours-grid">{data.tours.map(t=>{const g=parseGallery(t.galleryImages);return <article key={t.id}><div className="tour-photo-wrap">{t.mainImageUrl?<img src={t.mainImageUrl} alt={t.name}/>:<div className="tour-placeholder">Sin imagen</div>}<button className="tour-photo-btn" onClick={()=>openPhoto(t)}><Camera size={16}/> Cambiar foto</button></div><div className="tour-card-body"><div className="tour-card-top"><span className={`tour-status ${t.status}`}>{statuses.find(s=>s[0]===t.status)?.[1]||t.status}</span>{t.featured&&<span className="tour-status featured">Destacado</span>}<button onClick={()=>openEdit(t)}><Edit3 size={16}/> Editar</button></div><h2>{t.name}</h2><p>{t.destination}{t.duration?` · ${t.duration}`:''}</p><small>{t.shortDescription||'Sin descripción corta'}</small><div className="tour-prices"><strong>{money(t.adultPrice,t.currency)}</strong><span>Adulto</span>{t.childPrice!==null&&<><strong>{money(t.childPrice,t.currency)}</strong><span>Niño</span></>}</div>{g.length>0&&<div className="tour-card-gallery-hint"><ImageIcon size={13}/> {g.length} foto(s) en galería</div>}<code>/{t.slug}</code>{user?.role==='owner'&&<button className="tour-card-delete" onClick={()=>deleteTour(t)}><Trash2 size={14}/> Eliminar</button>}</div></article>})}</div>}</section></main>
+  {!loading&&!error&&data&&data.tours.length>0&&<div className="tours-grid">{data.tours.map(t=>{const g=parseGallery(t.galleryImages);return <article key={t.id}><div className="tour-photo-wrap">{t.mainImageUrl?<img src={t.mainImageUrl} alt={t.name}/>:<div className="tour-placeholder">Sin imagen</div>}<button className="tour-photo-btn" onClick={()=>openPhoto(t)}><Camera size={16}/> Cambiar foto</button></div><div className="tour-card-body"><div className="tour-card-top"><span className={`tour-status ${t.status}`}>{statuses.find(s=>s[0]===t.status)?.[1]||t.status}</span>{t.featured&&<span className="tour-status featured">Destacado</span>}<button onClick={()=>openEdit(t)}><Edit3 size={16}/> Editar</button></div>
+  <div className="tour-card-actions">
+    {t.status==='published'?(
+      <button type="button" className="tour-status-toggle draft" onClick={()=>toggleStatus(t)} title={`Pasar «${t.name}» a borrador`}>Pasar a borrador</button>
+    ):(
+      <button type="button" className="tour-status-toggle publish" onClick={()=>toggleStatus(t)} title={`Publicar «${t.name}» en el landing`}>Publicar</button>
+    )}
+  </div><h2>{t.name}</h2><p>{t.destination}{t.duration?` · ${t.duration}`:''}</p><small>{t.shortDescription||'Sin descripción corta'}</small><div className="tour-prices"><strong>{money(t.adultPrice,t.currency)}</strong><span>Adulto</span>{t.childPrice!==null&&<><strong>{money(t.childPrice,t.currency)}</strong><span>Niño</span></>}</div>{g.length>0&&<div className="tour-card-gallery-hint"><ImageIcon size={13}/> {g.length} foto(s) en galería</div>}<code>/{t.slug}</code>{user?.role==='owner'&&<button className="tour-card-delete" onClick={()=>deleteTour(t)}><Trash2 size={14}/> Eliminar</button>}</div></article>})}</div>}</section></main>
   {modal&&<div className="tour-modal"><button className="tour-modal-backdrop" onClick={()=>setModal(false)}/><section><header><div><span>{editing?'EDITAR TOUR':'NUEVO TOUR'}</span><h2>{editing?editing.name:'Crear experiencia'}</h2></div><button onClick={()=>setModal(false)}><X size={20}/></button></header><form onSubmit={save}><div className="tour-form-grid">
   {!photoMode&&(<>
     {(!editing||editing.id)&&<>
