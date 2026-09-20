@@ -33,8 +33,18 @@ const LOGIN_MAX_ATTEMPTS = 5;
 const loginAttempts = new Map();
 
 const dbConfigured = Boolean(process.env.DB_HOST && process.env.DB_USER && process.env.DB_NAME);
+// Resolve DB host: prefer env if it's a hostname; if env is an internal Docker IP
+// (potentially stale after container recreation), fallback to the MySQL service
+// alias. This avoids EHOSTUNREACH when the MySQL container is recreated with a
+// new IP in the same network.
+const FALLBACK_DB_HOSTS = ['capoy-final-6wsges', 'mysql'];
+const envHost = process.env.DB_HOST;
+const isLikelyStaleIp = envHost && /^10\.\d+\.\d+\.\d+$/.test(envHost);
+const dbHost = isLikelyStaleIp
+  ? (process.env.DB_HOSTNAME || FALLBACK_DB_HOSTS[0])
+  : (envHost || FALLBACK_DB_HOSTS[0]);
 const pool = dbConfigured ? mysql.createPool({
-  host: process.env.DB_HOST,
+  host: dbHost,
   port: Number(process.env.DB_PORT || 3306),
   user: process.env.DB_USER,
   password: process.env.DB_PASSWORD || process.env.DB_PASS,
