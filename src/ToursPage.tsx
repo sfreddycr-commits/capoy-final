@@ -61,7 +61,7 @@ export function ToursPage(){
   }
 
   function handleMainFileChange(e:ChangeEvent<HTMLInputElement>){const file=e.target.files?.[0];if(!file)return;if(!file.type.startsWith('image/')){setSaveError('El archivo debe ser una imagen.');return}if(file.size>5*1024*1024){setSaveError('La imagen no debe superar 5 MB.');return}setPreviewUrl(URL.createObjectURL(file));setPendingFile(file);setSaveError('')}
-  async function savePhoto(){if(!editing||!pendingFile)return;await uploadMainImage(pendingFile);setPhotoMode(false);setPendingFile(null)}
+  async function savePhoto(){if(!editing||!pendingFile)return;await uploadMainImage(pendingFile);setPhotoMode(false);setPendingFile(null);await load()}
   function handleGalleryFileChange(index:number,e:ChangeEvent<HTMLInputElement>){const file=e.target.files?.[0];if(file)void uploadGallerySlot(index,file)}
 
   const slots=Array.from({length:Math.max(5,gallery.length+1)},(_,i)=>i).slice(0,MAX_GALLERY);
