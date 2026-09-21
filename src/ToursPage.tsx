@@ -21,7 +21,7 @@ function parseGallery(value:unknown):string[]{if(!Array.isArray(value))return[];
 
 export function ToursPage(){
   const [user,setUser]=useState<AdminUser|null>(null);const [data,setData]=useState<Payload|null>(null);const [loading,setLoading]=useState(true);const [error,setError]=useState('');
-  const [query,setQuery]=useState('');const [status,setStatus]=useState('all');const [modal,setModal]=useState(false);const [editing,setEditing]=useState<Tour|null>(null);const [saving,setSaving]=useState(false);const [saveError,setSaveError]=useState('');const [mobileMenu,setMobileMenu]=useState(false);const [photoMode,setPhotoMode]=useState(false);const [previewUrl,setPreviewUrl]=useState<string|null>(null);const [uploading,setUploading]=useState(false);
+  const [query,setQuery]=useState('');const [status,setStatus]=useState('all');const [modal,setModal]=useState(false);const [editing,setEditing]=useState<Tour|null>(null);const [saving,setSaving]=useState(false);const [saveError,setSaveError]=useState('');const [mobileMenu,setMobileMenu]=useState(false);const [photoMode,setPhotoMode]=useState(false);const [previewUrl,setPreviewUrl]=useState<string|null>(null);const [uploading,setUploading]=useState(false);const [pendingFile,setPendingFile]=useState<File|null>(null);
   const [gallery,setGallery]=useState<string[]>([]);const [galleryUploading,setGalleryUploading]=useState<number|null>(null);const fileRefs=useRef<Record<number,HTMLInputElement|null>>({});
   const [activeLang,setActiveLang]=useState<LangCode>('es');
   const [translations,setTranslations]=useState<Record<LangCode,Translation>>({es:emptyTranslation(),en:emptyTranslation()});
@@ -31,7 +31,8 @@ export function ToursPage(){
   async function logout(){await fetch('/api/auth/logout',{method:'POST',credentials:'same-origin'}).catch(()=>null);window.location.assign('/admin/login')}
   function openCreate(){setEditing(null);setSaveError('');setPhotoMode(false);setPreviewUrl(null);setGallery([]);setActiveLang('es');setTranslations({es:emptyTranslation(),en:emptyTranslation()});setModal(true)}
   function openEdit(tour:Tour){setEditing(tour);setSaveError('');setPhotoMode(false);setPreviewUrl(null);setGallery(parseGallery(tour.galleryImages));setActiveLang('es');setTranslations({es:translationFromMap(tour,'es'),en:translationFromMap(tour,'en')});setModal(true)}
-  function openPhoto(tour:Tour){setEditing(tour);setSaveError('');setPhotoMode(true);setPreviewUrl(tour.mainImageUrl||null);setModal(true)}
+  function openPhoto(tour:Tour){setEditing(tour);setSaveError('');setPhotoMode(true);setPreviewUrl(tour.mainImageUrl||null);setPendingFile(null);setModal(true)}
+  function enterPhotoMode(){if(!editing)return;setSaveError('');setPhotoMode(true);setPreviewUrl(editing.mainImageUrl||null);setPendingFile(null)}
 
   function updateTranslation(lang:LangCode,field:keyof Translation,value:string){setTranslations((prev)=>({...prev,[lang]:{...prev[lang],[field]:value}}))}
 
@@ -59,7 +60,8 @@ export function ToursPage(){
     }catch(e){setError(e instanceof Error?e.message:`No fue posible ${verb} el tour.`)}
   }
 
-  function handleMainFileChange(e:ChangeEvent<HTMLInputElement>){const file=e.target.files?.[0];if(!file)return;if(!file.type.startsWith('image/')){setSaveError('El archivo debe ser una imagen.');return}if(file.size>5*1024*1024){setSaveError('La imagen no debe superar 5 MB.');return}setPreviewUrl(URL.createObjectURL(file));void uploadMainImage(file)}
+  function handleMainFileChange(e:ChangeEvent<HTMLInputElement>){const file=e.target.files?.[0];if(!file)return;if(!file.type.startsWith('image/')){setSaveError('El archivo debe ser una imagen.');return}if(file.size>5*1024*1024){setSaveError('La imagen no debe superar 5 MB.');return}setPreviewUrl(URL.createObjectURL(file));setPendingFile(file);setSaveError('')}
+  async function savePhoto(){if(!editing||!pendingFile)return;await uploadMainImage(pendingFile);setPhotoMode(false);setPendingFile(null)}
   function handleGalleryFileChange(index:number,e:ChangeEvent<HTMLInputElement>){const file=e.target.files?.[0];if(file)void uploadGallerySlot(index,file)}
 
   const slots=Array.from({length:Math.max(5,gallery.length+1)},(_,i)=>i).slice(0,MAX_GALLERY);
@@ -79,6 +81,13 @@ export function ToursPage(){
   </div><h2>{t.name}</h2><p>{t.destination}{t.duration?` · ${t.duration}`:''}</p><small>{t.shortDescription||'Sin descripción corta'}</small><div className="tour-prices"><strong>{money(t.adultPrice,t.currency)}</strong><span>Adulto</span>{t.childPrice!==null&&<><strong>{money(t.childPrice,t.currency)}</strong><span>Niño</span></>}</div>{g.length>0&&<div className="tour-card-gallery-hint"><ImageIcon size={13}/> {g.length} foto(s) en galería</div>}<code>/{t.slug}</code>{user?.role==='owner'&&<button className="tour-card-delete" onClick={()=>deleteTour(t)}><Trash2 size={14}/> Eliminar</button>}</div></article>})}</div>}</section></main>
   {modal&&<div className="tour-modal"><button className="tour-modal-backdrop" onClick={()=>setModal(false)}/><section><header><div><span>{editing?'EDITAR TOUR':'NUEVO TOUR'}</span><h2>{editing?editing.name:'Crear experiencia'}</h2></div><button onClick={()=>setModal(false)}><X size={20}/></button></header><form onSubmit={save}><div className="tour-form-grid">
   {!photoMode&&(<>
+    {editing&&editing.id&&(
+      <div className="wide">
+        <button type="button" className="tour-photo-inline-btn" onClick={enterPhotoMode}>
+          <Camera size={16}/> 📷 Cambiar foto{editing.mainImageUrl?' (tiene imagen)':''}
+        </button>
+      </div>
+    )}
     {(!editing||editing.id)&&<>
       <div className="wide tour-translations-bar">
         <span>Idioma de los campos informativos:</span>
@@ -118,5 +127,18 @@ export function ToursPage(){
     )}
     {!editing&&<div className="wide tour-gallery-note"><ImageIcon size={15}/> Guarda el tour y enseguida podrás agregar hasta {MAX_GALLERY} fotos con marca de agua a su galería.</div>}
   </>)}
-  </div>{saveError&&<div className="tour-form-error">{saveError}</div>}<footer><button type="button" onClick={()=>setModal(false)}>Cancelar</button><button className="primary" disabled={saving||uploading||galleryUploading!==null}>{saving?<><Loader2 className="spin" size={17}/> Guardando…</>:uploading?'Subiendo…':photoMode?'Guardar foto':editing?'Guardar cambios':'Crear tour'}</button></footer></form></section></div>}</div>
+  {photoMode&&editing&&(<div className="tour-photo-mode">
+    <div className="wide tour-photo-preview">{previewUrl?<img src={previewUrl} alt="Vista previa"/>:<div className="tour-photo-empty">Sin imagen</div>}</div>
+    <div className="wide tour-photo-actions">
+      <label className="tour-photo-select">
+        <input type="file" accept="image/*" onChange={handleMainFileChange}/>
+        <Camera size={16}/> Seleccionar imagen
+      </label>
+      {pendingFile&&<span className="tour-photo-pending">Archivo listo: {pendingFile.name}</span>}
+      <button type="button" className="tour-photo-back" onClick={()=>setPhotoMode(false)}>Volver</button>
+    </div>
+  </div>)}
+  </div>{saveError&&<div className="tour-form-error">{saveError}</div>}<footer><button type="button" onClick={()=>setModal(false)}>Cancelar</button>{photoMode
+    ?<button type="button" className="primary" disabled={uploading||!pendingFile} onClick={()=>void savePhoto()}>{uploading?<><Loader2 className="spin" size={17}/> Subiendo…</>:'Guardar foto'}</button>
+    :<button className="primary" disabled={saving||uploading||galleryUploading!==null}>{saving?<><Loader2 className="spin" size={17}/> Guardando…</>:uploading?'Subiendo…':editing?'Guardar cambios':'Crear tour'}</button>}</footer></form></section></div>}</div>
 }
