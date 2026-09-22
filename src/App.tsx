@@ -213,10 +213,40 @@ function renderLandingSection(key: string, landing: Landing) {
       return <section className="section container testimonials"><p className="eyebrow center">{landing.testimonials.eyebrow}</p><h2>{landing.testimonials.title}</h2><div className="testimonial-grid">{landing.testimonials.items.map((item, index) => item.quote ? <blockquote key={index}><span className="quote">“</span><p>{item.quote}</p><div className="stars">★★★★★</div><b>{item.author}</b><small>{item.country}</small></blockquote> : null)}</div></section>;
     case 'faq':
       return <section className="section container faq" id="faq"><p className="eyebrow center">{landing.faq.eyebrow}</p><h2>{landing.faq.title}</h2><div className="faq-grid">{landing.faq.items.map((item, index) => item.question ? <details key={index}><summary>{item.question}<span>⌄</span></summary><p>{item.answer}</p></details> : null)}</div></section>;
-    case 'cta':
+    case 'cta': {
       const ctaWhatsappNumber = landing.contact.whatsapp || landing.contact.phone.replace(/[^\d+]/g, '');
       const ctaWhatsappUrl = ctaWhatsappNumber ? `https://wa.me/${ctaWhatsappNumber.replace(/[^\d]/g, '')}` : '#';
-      return <section className="cta container" id="contacto"><div className="cta-copy"><div className="cta-logo">◒</div><div><h2>{landing.cta.title}</h2><p dangerouslySetInnerHTML={{ __html: landing.cta.copy }} /></div></div><div className="cta-actions"><a className="reserve-btn" href="#tours"><CalendarDays size={17}/>Reservar ahora</a>{ctaWhatsappNumber && <a className="cta-whatsapp-btn" href={ctaWhatsappUrl} target="_blank" rel="noopener noreferrer">{landing.cta.whatsappLabel || '🟢 o escríbenos por WhatsApp'}</a>}{landing.contact.schedule && <span className="cta-schedule">{landing.contact.schedule}</span>}</div><div className="cta-contact-info"><a href={`tel:${landing.contact.phone.replace(/[^\d+]/g, '')}`}><Phone size={14}/> {landing.contact.phone}</a>{landing.contact.email && <a href={`mailto:${landing.contact.email}`}><Mail size={14}/> {landing.contact.email}</a>}<span><MapPin size={14}/> {landing.contact.location}{landing.contact.addressExtra ? `, ${landing.contact.addressExtra}` : ''}</span>{landing.contact.instagram && <a href={`https://instagram.com/${landing.contact.instagram.replace(/^@/, '')}`} target="_blank" rel="noopener noreferrer">@{landing.contact.instagram.replace(/^@/, '')}</a>}{landing.contact.facebook && <a href={landing.contact.facebook.startsWith('http') ? landing.contact.facebook : `https://facebook.com/${landing.contact.facebook}`} target="_blank" rel="noopener noreferrer">Facebook</a>}{landing.contact.tiktok && <a href={landing.contact.tiktok.startsWith('http') ? landing.contact.tiktok : `https://tiktok.com/@${landing.contact.tiktok.replace(/^@/, '')}`} target="_blank" rel="noopener noreferrer">TikTok</a>}</div></section>;
+      const fullLocation = landing.contact.addressExtra
+        ? `${landing.contact.location}, ${landing.contact.addressExtra}`
+        : landing.contact.location;
+      const ctaCopyParts = String(landing.cta.copy || '').split(/<br\s*\/?>(?:\s*)/i);
+      return (
+        <section className="cta container" id="contacto">
+          <div className="cta-copy">
+            <div className="cta-logo">◒</div>
+            <div>
+              <h2>{landing.cta.title}</h2>
+              {ctaCopyParts.map((part, idx) => (
+                <span key={idx} className="cta-copy-line">{part}</span>
+              ))}
+            </div>
+          </div>
+          <div className="cta-actions">
+            <a className="reserve-btn" href="#tours"><CalendarDays size={17}/>Reservar ahora</a>
+            {ctaWhatsappNumber ? <a className="cta-whatsapp-btn" href={ctaWhatsappUrl} target="_blank" rel="noopener noreferrer">{landing.cta.whatsappLabel || '🟢 o escríbenos por WhatsApp'}</a> : null}
+            {landing.contact.schedule ? <span className="cta-schedule">{landing.contact.schedule}</span> : null}
+          </div>
+          <div className="cta-contact-info">
+            <a href={`tel:${landing.contact.phone.replace(/[^\d+]/g, '')}`}><Phone size={14}/> {landing.contact.phone}</a>
+            {landing.contact.email ? <a href={`mailto:${landing.contact.email}`}><Mail size={14}/> {landing.contact.email}</a> : null}
+            <span><MapPin size={14}/> {fullLocation}</span>
+            {landing.contact.instagram ? <a href={`https://instagram.com/${landing.contact.instagram.replace(/^@/, '')}`} target="_blank" rel="noopener noreferrer">@{landing.contact.instagram.replace(/^@/, '')}</a> : null}
+            {landing.contact.facebook ? <a href={landing.contact.facebook.startsWith('http') ? landing.contact.facebook : `https://facebook.com/${landing.contact.facebook}`} target="_blank" rel="noopener noreferrer">Facebook</a> : null}
+            {landing.contact.tiktok ? <a href={landing.contact.tiktok.startsWith('http') ? landing.contact.tiktok : `https://tiktok.com/@${landing.contact.tiktok.replace(/^@/, '')}`} target="_blank" rel="noopener noreferrer">TikTok</a> : null}
+          </div>
+        </section>
+      );
+    }
     default:
       return null;
   }
