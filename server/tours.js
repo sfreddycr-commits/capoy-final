@@ -136,6 +136,11 @@ function pickTranslated(row) {
 
 function mapPublicTour(row) {
   const t = pickTranslated(row);
+  const gallery = parseJsonField(row.gallery_watermarked) || [];
+  // Fallback: if the admin never uploaded a main photo, use the first gallery
+  // image so the public card always shows a real tour photo from BD, never a
+  // generic placeholder.
+  const mainImageUrl = row.main_image_url || (gallery[0] && String(gallery[0]).trim()) || null;
   return {
     id: Number(row.id),
     slug: row.slug,
@@ -148,8 +153,8 @@ function mapPublicTour(row) {
     childPrice: row.child_price === null ? null : Number(row.child_price),
     currency: row.currency,
     capacity: row.capacity === null ? null : Number(row.capacity),
-    mainImageUrl: row.main_image_url,
-    galleryImages: parseJsonField(row.gallery_watermarked) || [],
+    mainImageUrl,
+    galleryImages: gallery,
     featured: Number(row.featured) === 1,
     sortOrder: row.sort_order === null ? null : Number(row.sort_order),
     publishedAt: row.published_at,
