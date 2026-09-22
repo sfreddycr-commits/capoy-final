@@ -111,41 +111,19 @@ export function PublicCompanyBridge() {
 
         // Footer: copy, contact block, hours, legal name
         if (c.company_tagline) setText('.footer-grid > div:first-child > p', c.company_tagline);
-        if (c.company_legal_name) {
-          const legalEl = document.querySelector('.footer-grid > div:first-child small');
-          if (!legalEl) {
-            const footerCol = document.querySelector('.footer-grid > div:first-child');
-            if (footerCol) {
-              const small = document.createElement('small');
-              small.style.cssText = 'display:block;color:#a8b8af;font-size:9px;margin-top:4px;';
-              small.textContent = c.company_legal_name;
-              footerCol.appendChild(small);
-            }
-          } else legalEl.textContent = c.company_legal_name;
-        }
+        // company_legal_name is intentionally NOT injected into the footer
+        // here: that area is React-managed and appending/mutating nodes causes
+        // 'removeChild' reconciliation errors on re-renders. The legal name
+        // is rendered into the document title (see below) instead.
 
         // Footer contact block: now managed by React (src/App.tsx) from
         // landing.contact data returned by /api/public/landing. The bridge
         // intentionally does NOT mutate the footer Contacto column anymore
         // to avoid React reconciliation errors (removeChild on detached nodes).
 
-        // Social links (small dots in footer, first column)
-        const socials = document.querySelector('.footer-grid > div:first-child .socials');
-        if (socials) {
-          const socialItems = [
-            ['facebook', c.social_facebook],
-            ['instagram', c.social_instagram],
-            ['tiktok', c.social_tiktok],
-            ['youtube', c.social_youtube],
-            ['whatsapp', c.social_whatsapp_link],
-          ].filter(([, url]) => !!url);
-          if (socialItems.length) {
-            socials.innerHTML = socialItems.map(([key, url]) => {
-              const label = ({ facebook: 'Facebook', instagram: 'Instagram', tiktok: 'TikTok', youtube: 'YouTube', whatsapp: 'WhatsApp' })[key] || key;
-              return `<a href="${url}" target="_blank" rel="noopener" aria-label="${label}" style="color:inherit;text-decoration:none;margin-right:8px">${label}</a>`;
-            }).join(' · ');
-          }
-        }
+        // Social links: also React-managed now (src/App.tsx renders the
+        // .socials div from landing.contact.instagram/facebook/tiktok).
+        // Skip innerHTML mutation to avoid React reconciliation errors.
 
         // Title and meta
         if (c.business_name) document.title = `${c.business_name} | Tours y experiencias`;
