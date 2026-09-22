@@ -124,48 +124,10 @@ export function PublicCompanyBridge() {
           } else legalEl.textContent = c.company_legal_name;
         }
 
-        // Footer contact block (replaces the hardcoded phone/email/location)
-        if (c.company_phone || c.company_email || c.company_address || c.company_hours) {
-          const footer = document.querySelector('.footer-grid');
-          if (footer) {
-            // Find or rebuild the "Contacto" column (4th child)
-            let contact = footer.children[3];
-            if (contact) {
-              contact.innerHTML = '<b>Contacto</b>';
-              if (c.company_phone) {
-                const phoneA = document.createElement('span');
-                phoneA.innerHTML = `<a href="tel:${String(c.company_phone).replace(/[^+\d]/g,'')}" style="color:inherit;text-decoration:none">${c.company_phone}</a>`;
-                contact.appendChild(phoneA);
-              }
-              if (c.company_whatsapp) {
-                const waA = document.createElement('span');
-                const waClean = String(c.company_whatsapp).replace(/[^+\d]/g, '');
-                waA.innerHTML = `<a href="https://wa.me/${waClean}" target="_blank" rel="noopener" style="color:inherit;text-decoration:none">WhatsApp · ${c.company_whatsapp}</a>`;
-                contact.appendChild(waA);
-              }
-              if (c.company_email) {
-                const emA = document.createElement('span');
-                emA.innerHTML = `<a href="mailto:${c.company_email}" style="color:inherit;text-decoration:none">${c.company_email}</a>`;
-                contact.appendChild(emA);
-              }
-              if (c.company_address) {
-                const addr = document.createElement('span');
-                addr.textContent = c.company_address;
-                contact.appendChild(addr);
-              }
-              if (c.company_hours) {
-                const hrs = document.createElement('span');
-                hrs.textContent = c.company_hours;
-                contact.appendChild(hrs);
-              }
-              if (c.company_website) {
-                const w = document.createElement('span');
-                w.innerHTML = `<a href="${c.company_website}" target="_blank" rel="noopener" style="color:inherit;text-decoration:none">${c.company_website.replace(/^https?:\/\//,'')}</a>`;
-                contact.appendChild(w);
-              }
-            }
-          }
-        }
+        // Footer contact block: now managed by React (src/App.tsx) from
+        // landing.contact data returned by /api/public/landing. The bridge
+        // intentionally does NOT mutate the footer Contacto column anymore
+        // to avoid React reconciliation errors (removeChild on detached nodes).
 
         // Social links (small dots in footer, first column)
         const socials = document.querySelector('.footer-grid > div:first-child .socials');
