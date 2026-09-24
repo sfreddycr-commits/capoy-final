@@ -134,13 +134,23 @@ function pickTranslated(row) {
   };
 }
 
+function resolveMainImageUrl(row) {
+  const gallery = parseJsonField(row.gallery_watermarked) || [];
+  if (row.main_image_url) return row.main_image_url;
+  if (gallery[0]) {
+    const first = String(gallery[0]).trim();
+    if (first) return first;
+  }
+  return null;
+}
+
 function mapPublicTour(row) {
   const t = pickTranslated(row);
   const gallery = parseJsonField(row.gallery_watermarked) || [];
   // Fallback: if the admin never uploaded a main photo, use the first gallery
   // image so the public card always shows a real tour photo from BD, never a
   // generic placeholder.
-  const mainImageUrl = row.main_image_url || (gallery[0] && String(gallery[0]).trim()) || null;
+  const mainImageUrl = resolveMainImageUrl(row);
   return {
     id: Number(row.id),
     slug: row.slug,
@@ -271,7 +281,7 @@ export function registerTourRoutes({ app, pool, requireSession, sameOriginOnly, 
           id: Number(row.id), slug: row.slug, name: row.name, destination: row.destination,
           shortDescription: row.short_description, description: row.description, duration: row.duration,
           adultPrice: Number(row.adult_price), childPrice: row.child_price === null ? null : Number(row.child_price),
-          currency: row.currency, capacity: row.capacity === null ? null : Number(row.capacity), mainImageUrl: row.main_image_url,
+          currency: row.currency, capacity: row.capacity === null ? null : Number(row.capacity), mainImageUrl: resolveMainImageUrl(row), galleryImages: parseJsonField(row.gallery_watermarked) || [],
           status: row.status, featured: Number(row.featured) === 1, sortOrder: row.sort_order === null ? null : Number(row.sort_order), publishedAt: row.published_at, createdAt: row.created_at, updatedAt: row.updated_at,
           galleryImages: parseJsonField(row.gallery_watermarked) || [],
           translations: translationsMap.get(Number(row.id)) || {},
