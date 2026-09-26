@@ -84,3 +84,6 @@ button.card-btn{font-family:inherit;border:0;cursor:pointer}
 /* Mobile FAB for admin-login-link (positionFixed=true on mobile) */
 .landing-section--hero .admin-login-link[data-fixed]{position:fixed;z-index:60}
 @media(max-width:640px){.landing-section--header .admin-login-link{position:fixed!important;left:auto;top:auto;right:14px;bottom:14px;z-index:60;background:var(--deep);color:#fff;border-radius:8px;padding:10px 14px;font-size:12px;font-weight:700;box-shadow:0 8px 20px rgba(0,0,0,.25);text-decoration:none}}
+/* Tours without a DB photo: neutral branded placeholder (no stock/incorrect image). */
+.tour-image--empty{background:linear-gradient(135deg,#0b5a35,#06452b)}
+.public-tour-modal-slide--empty{background:linear-gradient(135deg,#0b5a35,#06452b)}

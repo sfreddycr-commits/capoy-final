@@ -18,7 +18,6 @@ type PublicTour = {
   language?: string;
 };
 
-const FALLBACK_IMAGE = 'https://images.unsplash.com/photo-1500534623283-312aade485b7?auto=format&fit=crop&w=900&q=85';
 const MAX_CAROUSEL = 5;
 
 const intl = new Intl.NumberFormat('es-CR', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 });
@@ -31,12 +30,21 @@ function formatPrice(value: number, currency: string) {
   }
 }
 
-function safeImage(url: string) {
-  if (!url) return FALLBACK_IMAGE;
-  if (url.startsWith("https://")) return url;
-  if (url.startsWith("http://")) return url;
-  if (url.startsWith("/uploads")) return url;
-  return FALLBACK_IMAGE;
+function isValidImage(url: unknown): url is string {
+  return typeof url === 'string' && (url.startsWith('/uploads') || url.startsWith('https://') || url.startsWith('http://'));
+}
+
+// Single source of truth for the landing card AND the detail modal: the DB main
+// photo first, then the DB gallery, de-duplicated. No hardcoded stock fallback.
+function tourImages(tour: PublicTour): string[] {
+  const list: string[] = [];
+  if (isValidImage(tour.mainImageUrl)) list.push(tour.mainImageUrl);
+  if (Array.isArray(tour.galleryImages)) {
+    for (const url of tour.galleryImages) {
+      if (isValidImage(url) && !list.includes(url)) list.push(url);
+    }
+  }
+  return list.slice(0, MAX_CAROUSEL);
 }
 
 function textElement<K extends keyof HTMLElementTagNameMap>(tag: K, className: string | null, text: string) {
@@ -52,9 +60,10 @@ function buildTourCard(tour: PublicTour) {
   article.dataset.publicTourId = String(tour.id);
   article.dataset.publicTourSlug = tour.slug;
 
+  const images = tourImages(tour);
   const image = document.createElement('div');
-  image.className = 'tour-image';
-  image.style.backgroundImage = `url(${safeImage(tour.mainImageUrl || FALLBACK_IMAGE)})`;
+  image.className = images.length ? 'tour-image' : 'tour-image tour-image--empty';
+  if (images.length) image.style.backgroundImage = `url(${images[0]})`;
   image.setAttribute('aria-label', tour.name);
 
   const badge = textElement('span', 'badge', tour.duration ? `◷ ${tour.duration}` : 'Capoy');
@@ -209,22 +218,21 @@ function renderModal(overlay: HTMLElement, tour: PublicTour) {
   const prev = overlay.querySelector<HTMLButtonElement>('.public-tour-modal-nav.prev')!;
   const next = overlay.querySelector<HTMLButtonElement>('.public-tour-modal-nav.next')!;
 
-  const gallery = (Array.isArray(tour.galleryImages) ? tour.galleryImages : []).slice(0, MAX_CAROUSEL);
+  const images = tourImages(tour);
   track.replaceChildren();
   dots.replaceChildren();
 
-  if (gallery.length === 0) {
-    const fallback = document.createElement('img');
-    fallback.src = safeImage(tour.mainImageUrl || FALLBACK_IMAGE);
-    fallback.alt = tour.name;
-    fallback.className = 'public-tour-modal-slide';
-    track.appendChild(fallback);
+  if (images.length === 0) {
+    const placeholder = document.createElement('div');
+    placeholder.className = 'public-tour-modal-slide public-tour-modal-slide--empty';
+    placeholder.setAttribute('aria-label', `${tour.name} — sin foto`);
+    track.appendChild(placeholder);
     prev.hidden = true;
     next.hidden = true;
   } else {
-    gallery.forEach((url, idx) => {
+    images.forEach((url, idx) => {
       const img = document.createElement('img');
-      img.src = safeImage(url);
+      img.src = url;
       img.alt = `${tour.name} — foto ${idx + 1}`;
       img.className = 'public-tour-modal-slide';
       img.loading = idx === 0 ? 'eager' : 'lazy';
@@ -237,8 +245,8 @@ function renderModal(overlay: HTMLElement, tour: PublicTour) {
       dot.dataset.dotIndex = String(idx);
       dots.appendChild(dot);
     });
-    prev.hidden = gallery.length < 2;
-    next.hidden = gallery.length < 2;
+    prev.hidden = images.length < 2;
+    next.hidden = images.length < 2;
   }
 
   title.textContent = tour.name;
@@ -263,13 +271,13 @@ function renderModal(overlay: HTMLElement, tour: PublicTour) {
 
   reserve.textContent = `Reservar ${tour.name}`;
   carouselIndex = 0;
-  applyCarouselPosition(track, dots, 0, gallery.length);
-  prev.onclick = () => stepCarousel(track, dots, gallery.length, -1);
-  next.onclick = () => stepCarousel(track, dots, gallery.length, 1);
+  applyCarouselPosition(track, dots, 0, images.length);
+  prev.onclick = () => stepCarousel(track, dots, images.length, -1);
+  next.onclick = () => stepCarousel(track, dots, images.length, 1);
   dots.querySelectorAll<HTMLButtonElement>('.public-tour-modal-dot').forEach((dot) => {
     dot.onclick = () => {
       const i = Number(dot.dataset.dotIndex || '0');
-      applyCarouselPosition(track, dots, i, gallery.length);
+      applyCarouselPosition(track, dots, i, images.length);
     };
   });
 }
