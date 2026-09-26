@@ -23,3 +23,11 @@ USE capoy_db;
 UPDATE cms_settings
 SET setting_value = CONVERT(CAST(CONVERT(setting_value USING latin1) AS BINARY) USING utf8mb4)
 WHERE HEX(setting_value) LIKE '%C383%' OR HEX(setting_value) LIKE '%C3B0C5B8%';
+
+-- JSON columns carry the same double-encoded bytes (the landing components store
+-- hero/CTA props as JSON). They are scanned/fixed here too, otherwise the hero
+-- lead served by /api/public/landing/page stays mojibake even when the flat CMS
+-- text is already correct.
+UPDATE landing_components
+SET props_json = CONVERT(CAST(CONVERT(props_json USING latin1) AS BINARY) USING utf8mb4)
+WHERE HEX(props_json) LIKE '%C383%' OR HEX(props_json) LIKE '%C3B0C5B8%';
