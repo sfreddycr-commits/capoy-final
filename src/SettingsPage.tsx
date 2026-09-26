@@ -1,5 +1,5 @@
-import { ChangeEvent, FormEvent, useEffect, useMemo, useRef, useState } from 'react';
-import { AlertTriangle, Download, Eye, EyeOff, History, Loader2, RotateCcw, Save, Search, ShieldCheck, ShieldOff, Upload, X } from 'lucide-react';
+import { FormEvent, useEffect, useMemo, useRef, useState } from 'react';
+import { AlertTriangle, Eye, EyeOff, History, Loader2, RotateCcw, Save, Search, ShieldCheck, ShieldOff, X } from 'lucide-react';
 import { AdminShell } from './AdminShell';
 
 type AdminUser = { id: number; displayName: string; email: string; role: string; twoFactorEnabled: boolean };
@@ -179,9 +179,7 @@ export function SettingsPage() {
   const [showMaintenanceConfirm, setShowMaintenanceConfirm] = useState(false);
   const [revokingSessionId, setRevokingSessionId] = useState<number | null>(null);
   const [search, setSearch] = useState('');
-  const [importing, setImporting] = useState(false);
   const initialRef = useRef<Record<string, string> | null>(null);
-  const importRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     async function load() {
@@ -297,46 +295,6 @@ export function SettingsPage() {
     }
   }
 
-  function exportSettings() {
-    window.location.href = '/api/admin/settings/export';
-  }
-
-  async function importSettings(event: ChangeEvent<HTMLInputElement>) {
-    const file = event.target.files?.[0];
-    if (!file) return;
-    if (file.size > 256 * 1024) {
-      setToast({ tone: 'err', message: 'El archivo es demasiado grande (máx 256 KB).' });
-      return;
-    }
-    setImporting(true);
-    try {
-      const text = await file.text();
-      const parsed = JSON.parse(text);
-      const incoming = parsed?.settings && typeof parsed.settings === 'object' ? parsed.settings : parsed;
-      if (!incoming || typeof incoming !== 'object' || Array.isArray(incoming)) {
-        throw new Error('Archivo inválido.');
-      }
-      const r = await fetch('/api/admin/settings/import', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'same-origin',
-        body: JSON.stringify({ settings: incoming }),
-      });
-      const body = await r.json().catch(() => ({}));
-      if (!r.ok) throw new Error(body.error || 'No fue posible importar.');
-      setToast({ tone: 'ok', message: `${body.imported || 0} ajustes importados. Revisa y guarda los cambios.` });
-      const settingsRes = await fetch('/api/admin/settings', { credentials: 'same-origin' });
-      const data = await settingsRes.json();
-      setSettings(data.settings || {});
-      setDraft(Object.fromEntries(Object.entries(data.settings || {}).map(([k, v]) => [k, (v as Setting).value])));
-    } catch (e) {
-      setToast({ tone: 'err', message: e instanceof Error ? e.message : 'No fue posible importar.' });
-    } finally {
-      setImporting(false);
-      if (importRef.current) importRef.current.value = '';
-    }
-  }
-
   function resetField(key: string) {
     const original = settings[key]?.value ?? '';
     setDraft((d) => ({ ...d, [key]: original }));
@@ -384,15 +342,6 @@ export function SettingsPage() {
                 </div>
                 <div className="settings-toolbar-info">
                   {search && <span>{totalMatches} resultado{totalMatches === 1 ? '' : 's'}</span>}
-                </div>
-                <div className="settings-toolbar-actions">
-                  <button type="button" className="settings-toolbar-btn" onClick={exportSettings} title="Descargar JSON con toda la configuración">
-                    <Download size={15} /> Exportar
-                  </button>
-                  <button type="button" className="settings-toolbar-btn" disabled={importing} onClick={() => importRef.current?.click()} title="Importar configuración desde un JSON">
-                    {importing ? <><Loader2 className="spin" size={15} /> Importando…</> : <><Upload size={15} /> Importar</>}
-                  </button>
-                  <input ref={importRef} type="file" accept="application/json,.json" hidden onChange={importSettings} disabled={importing} />
                 </div>
               </div>
             )}
