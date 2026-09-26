@@ -173,17 +173,66 @@ function buildModal() {
   reserve.textContent = 'Reservar este tour';
   body.appendChild(reserve);
 
+  const booking = document.createElement('form');
+  booking.className = 'public-tour-modal-booking';
+  booking.innerHTML = `
+    <div class="public-tour-modal-section-heading"><span>PRE-RESERVA</span><strong>Planea tu visita</strong></div>
+    <div class="public-tour-modal-booking-grid">
+      <label>Fecha<input name="date" type="date" required></label>
+      <label>Personas<input name="people" type="number" min="1" max="99" value="1" required></label>
+      <label>Nombre (opcional)<input name="name" type="text" maxlength="120" autocomplete="name"></label>
+      <label>WhatsApp o correo (opcional)<input name="contact" type="text" maxlength="190" autocomplete="email"></label>
+    </div>
+    <button type="submit" class="public-tour-modal-whatsapp">Solicitar por WhatsApp</button>
+    <p class="public-tour-modal-booking-status" role="status" aria-live="polite"></p>`;
+  body.appendChild(booking);
+
+  const relatedSection = document.createElement('section');
+  relatedSection.className = 'public-tour-modal-related-wrap';
+  relatedSection.innerHTML = '<div class="public-tour-modal-section-heading"><span>TAMBIÉN PUEDE INTERESARTE</span><strong>Tours relacionados</strong></div><div class="public-tour-modal-related"></div>';
+  body.appendChild(relatedSection);
+
   dialog.appendChild(close);
   dialog.appendChild(carousel);
   dialog.appendChild(dots);
   dialog.appendChild(body);
   overlay.appendChild(dialog);
   document.body.appendChild(overlay);
+  booking.addEventListener('submit', (event) => {
+    event.preventDefault();
+    const form = event.currentTarget as HTMLFormElement;
+    const data = new FormData(form);
+    const date = String(data.get('date') || '').trim();
+    const people = String(data.get('people') || '').trim();
+    const name = String(data.get('name') || '').trim();
+    const contact = String(data.get('contact') || '').trim();
+    const status = form.querySelector<HTMLElement>('.public-tour-modal-booking-status')!;
+    const tourName = form.dataset.tourName || '';
+    if (!date || !people || Number(people) < 1) {
+      status.textContent = 'Indica una fecha y al menos una persona.';
+      return;
+    }
+    if (!whatsappNumber) {
+      status.textContent = 'WhatsApp no está disponible en este momento.';
+      return;
+    }
+    const message = [
+      `Hola Capoy, quiero pre-reservar: ${tourName}`,
+      `Fecha: ${date}`,
+      `Personas: ${people}`,
+      name ? `Nombre: ${name}` : '',
+      contact ? `Contacto: ${contact}` : '',
+    ].filter(Boolean).join('\n');
+    window.open(`https://wa.me/${whatsappNumber.replace(/[^\d]/g, '')}?text=${encodeURIComponent(message)}`, '_blank', 'noopener,noreferrer');
+    status.textContent = 'WhatsApp está listo con los datos de tu solicitud.';
+  });
   return overlay;
 }
 
 let carouselIndex = 0;
 let lastTrigger: HTMLElement | null = null;
+let publicTours: PublicTour[] = [];
+let whatsappNumber = '';
 
 function getModalFocusable(overlay: HTMLElement): HTMLElement[] {
   const sel = 'a[href], button:not([disabled]), [tabindex]:not([tabindex="-1"])';
@@ -217,6 +266,8 @@ function renderModal(overlay: HTMLElement, tour: PublicTour) {
   const reserve = overlay.querySelector<HTMLAnchorElement>('.public-tour-modal-reserve')!;
   const prev = overlay.querySelector<HTMLButtonElement>('.public-tour-modal-nav.prev')!;
   const next = overlay.querySelector<HTMLButtonElement>('.public-tour-modal-nav.next')!;
+  const booking = overlay.querySelector<HTMLFormElement>('.public-tour-modal-booking')!;
+  const related = overlay.querySelector<HTMLElement>('.public-tour-modal-related')!;
 
   const images = tourImages(tour);
   track.replaceChildren();
@@ -270,6 +321,24 @@ function renderModal(overlay: HTMLElement, tour: PublicTour) {
   }
 
   reserve.textContent = `Reservar ${tour.name}`;
+  booking.dataset.tourName = tour.name;
+  booking.reset();
+  related.replaceChildren();
+  const relatedTours = publicTours.filter((candidate) => candidate.id !== tour.id).slice(0, 3);
+  relatedTours.forEach((candidate) => {
+    const item = document.createElement('button');
+    item.type = 'button';
+    item.className = 'public-tour-related-card';
+    const candidateImages = tourImages(candidate);
+    if (candidateImages[0]) item.style.backgroundImage = `linear-gradient(180deg, transparent 35%, rgba(0,0,0,.76)), url(${candidateImages[0]})`;
+    const name = document.createElement('strong');
+    name.textContent = candidate.name;
+    const place = document.createElement('span');
+    place.textContent = candidate.destination;
+    item.append(name, place);
+    item.onclick = () => openModal(overlay, candidate, item);
+    related.appendChild(item);
+  });
   carouselIndex = 0;
   applyCarouselPosition(track, dots, 0, images.length);
   prev.onclick = () => stepCarousel(track, dots, images.length, -1);
@@ -355,6 +424,7 @@ export function PublicToursBridge() {
         if (cancelled || !Array.isArray(data?.tours)) return;
         grid.replaceChildren();
         const tours = data.tours as PublicTour[];
+        publicTours = tours;
         if (!tours.length) {
           const empty = textElement('p', 'public-tours-empty', 'Pronto publicaremos nuevas experiencias.');
           grid.appendChild(empty);
@@ -372,6 +442,13 @@ export function PublicToursBridge() {
       .catch(() => {
         if (grid) grid.dataset.publicToursStatus = 'fallback';
       });
+
+    fetch('/api/public/landing', { headers: { Accept: 'application/json' } })
+      .then((response) => response.ok ? response.json() : null)
+      .then((data) => {
+        whatsappNumber = String(data?.landing?.contact?.whatsapp || '').trim();
+      })
+      .catch(() => { whatsappNumber = ''; });
 
     return () => {
       cancelled = true;
